@@ -28,7 +28,7 @@ export default function LoginPage() {
     if (result?.error) {
       setError("Email o password non corretti.");
     } else {
-      router.push("/");
+      router.push("/vehicles");
       router.refresh();
     }
   }

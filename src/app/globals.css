@@ -2,15 +2,14 @@
 @import "leaflet/dist/leaflet.css";
 
 :root {
-  --background: #09090b;
-  --foreground: #fafafa;
+  --background: #121317;
+  --foreground: #ffffff;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter);
 }
 
 body {
