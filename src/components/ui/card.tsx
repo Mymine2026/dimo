@@ -2,16 +2,27 @@ import { cn } from "@/lib/utils";
 
 export function Card({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
-    <div className={cn("rounded-2xl border border-zinc-800 bg-zinc-900 p-6", className)}>
+    <div
+      className={cn("rounded-2xl p-4", className)}
+      style={{ background: "#1e1f23", borderRadius: 16 }}
+    >
       {children}
     </div>
   );
 }
 
 export function CardTitle({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <h3 className={cn("text-sm font-medium text-zinc-400 mb-1", className)}>{children}</h3>;
+  return (
+    <h3 className={cn("text-[11px] mb-1.5", className)} style={{ color: "#6b7280" }}>
+      {children}
+    </h3>
+  );
 }
 
 export function CardValue({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <p className={cn("text-2xl font-bold text-white", className)}>{children}</p>;
+  return (
+    <p className={cn("text-[22px] font-bold leading-none text-white", className)}>
+      {children}
+    </p>
+  );
 }
