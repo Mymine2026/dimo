@@ -16,10 +16,10 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 flex border-t"
+      className="fixed bottom-0 left-0 right-0 z-50 flex"
       style={{
-        background: "#1e1f23",
-        borderColor: "rgba(255,255,255,0.06)",
+        background: "#0d0e12",
+        borderTop: "1px solid #444748",
         paddingBottom: "max(env(safe-area-inset-bottom), 8px)",
       }}
     >
@@ -29,13 +29,21 @@ export function BottomNav() {
           <Link
             key={href}
             href={href}
-            className="flex flex-1 flex-col items-center gap-1 pt-3 pb-1"
+            className="flex flex-1 flex-col items-center gap-1 pt-2.5 pb-1"
           >
-            <Icon
-              className="w-[22px] h-[22px]"
-              strokeWidth={active ? 2.5 : 1.75}
-              style={{ color: active ? "#ffffff" : "#555869" }}
-            />
+            <div
+              className="flex items-center justify-center rounded-xl"
+              style={{
+                background: active ? "#1e1f23" : "transparent",
+                padding: "5px 14px",
+              }}
+            >
+              <Icon
+                className="w-[20px] h-[20px]"
+                strokeWidth={active ? 2.25 : 1.75}
+                style={{ color: active ? "#ffffff" : "#555869" }}
+              />
+            </div>
             <span
               className="text-[10px] font-medium tracking-wide"
               style={{ color: active ? "#ffffff" : "#555869" }}
