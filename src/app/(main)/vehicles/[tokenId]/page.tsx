@@ -130,12 +130,30 @@ export default function VehicleDetailPage() {
         if (data.length > 0 && hours !== queryHours) {
           const r2 = await fetch(`/api/telemetry?tokenId=${tokenId}&hours=${hours}`);
           const d2 = await r2.json();
-          setSignals((r2.ok ? d2 : data).slice(-100));
+          setSignals((r2.ok ? d2 : data).slice(-100).map((s: TelemetrySignal) => ({
+            ...s,
+            speed:             typeof s.speed             === 'number' ? s.speed             : 0,
+            fuelLevel:         typeof s.fuelLevel         === 'number' ? s.fuelLevel         : null,
+            engineRpm:         typeof s.engineRpm         === 'number' ? s.engineRpm         : null,
+            engineCoolantTemp: typeof s.engineCoolantTemp === 'number' ? s.engineCoolantTemp : null,
+          })));
         } else {
-          setSignals(data.slice(-100));
+          setSignals(data.slice(-100).map((s: TelemetrySignal) => ({
+            ...s,
+            speed:             typeof s.speed             === 'number' ? s.speed             : 0,
+            fuelLevel:         typeof s.fuelLevel         === 'number' ? s.fuelLevel         : null,
+            engineRpm:         typeof s.engineRpm         === 'number' ? s.engineRpm         : null,
+            engineCoolantTemp: typeof s.engineCoolantTemp === 'number' ? s.engineCoolantTemp : null,
+          })));
         }
       } else {
-        setSignals(data.slice(-100));
+        setSignals(data.slice(-100).map((s: TelemetrySignal) => ({
+          ...s,
+          speed:             typeof s.speed             === 'number' ? s.speed             : 0,
+          fuelLevel:         typeof s.fuelLevel         === 'number' ? s.fuelLevel         : null,
+          engineRpm:         typeof s.engineRpm         === 'number' ? s.engineRpm         : null,
+          engineCoolantTemp: typeof s.engineCoolantTemp === 'number' ? s.engineCoolantTemp : null,
+        })));
       }
     } catch (e) {
       const msg = String(e);

@@ -21,7 +21,12 @@ export function SignalChart({ signals, field, label, color, unit, transform }: P
       value: transform ? transform(s[field] as number) : (s[field] as number),
     }));
 
-  if (data.length === 0) {
+  const safeData = (data || []).map(point => ({
+    ...point,
+    value: typeof point.value === 'number' ? point.value : (parseFloat(String(point.value)) || 0),
+  }));
+
+  if (safeData.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 text-zinc-500 text-sm">
         No data available
@@ -31,7 +36,7 @@ export function SignalChart({ signals, field, label, color, unit, transform }: P
 
   return (
     <ResponsiveContainer width="100%" height={200}>
-      <AreaChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+      <AreaChart data={safeData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
         <defs>
           <linearGradient id={`grad-${field as string}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor={color} stopOpacity={0.3} />
