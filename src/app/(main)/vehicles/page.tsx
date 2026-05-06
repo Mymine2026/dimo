@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { Vehicle } from "@/types/dimo";
@@ -84,13 +85,15 @@ function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
 }
 
 export default function VehiclesPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
+    if (status !== "authenticated") return;
     fetch("/api/vehicles")
       .then((res) =>
         res.json().then((data: unknown) => ({ ok: res.ok, data }))
@@ -104,7 +107,10 @@ export default function VehiclesPage() {
       })
       .catch((e: unknown) => setError(String(e)))
       .finally(() => setLoading(false));
-  }, []);
+  }, [status]);
+
+  if (status === "loading") return <div style={{color:'white',padding:'20px'}}>Caricamento sessione...</div>;
+  if (status === "unauthenticated") { router.push("/login"); return null; }
 
   const filtered = search
     ? vehicles.filter((v) => {
