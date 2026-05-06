@@ -88,12 +88,12 @@ export default function VehicleDetailPage() {
         if (data.length > 0 && hours !== queryHours) {
           const r2 = await fetch(`/api/telemetry?tokenId=${tokenId}&hours=${hours}`);
           const d2 = await r2.json();
-          setSignals(r2.ok ? d2 : data);
+          setSignals((r2.ok ? d2 : data).slice(-100));
         } else {
-          setSignals(data);
+          setSignals(data.slice(-100));
         }
       } else {
-        setSignals(data);
+        setSignals(data.slice(-100));
       }
     } catch (e) {
       const msg = String(e);
