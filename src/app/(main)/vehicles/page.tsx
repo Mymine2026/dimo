@@ -1,10 +1,13 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { Vehicle } from "@/types/dimo";
 import { Loader2, AlertCircle, Search, Car, LogOut } from "lucide-react";
+
+const MapSection = dynamic(() => import("@/components/VehicleMap"), { ssr: false });
 
 type VehicleStatus = "ACTIVE" | "IN SERVICE" | "ERROR";
 
