@@ -75,9 +75,8 @@ export async function getDeveloperJwt(): Promise<string> {
       throw new Error(`Auth submit: invalid response (${sRes.status}): ${sText.slice(0, 200)}`);
     }
   }
-  if (!sRes.ok) throw new Error(`Auth submit failed (${sRes.status}): ${sText.slice(0, 200)}`);
   const token = sData?.access_token ?? sData?.token ?? "";
-  if (!token) throw new Error(`Auth submit: no token in response: ${sText.slice(0, 200)}`);
+  if (!token) throw new Error(`Auth submit: no token in response (${sRes.status}): ${sText.slice(0, 200)}`);
   return token.replace(/^"|"$/g, "");
 }
 
