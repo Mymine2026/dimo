@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Car, BarChart2, FileText, User } from "lucide-react";
+import { Truck, BarChart2, FileText, User } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/vehicles", icon: Car, label: "Fleet" },
+  { href: "/vehicles", icon: Truck, label: "Fleet" },
   { href: "/analytics", icon: BarChart2, label: "Analytics" },
   { href: "/documents", icon: FileText, label: "Documents" },
   { href: "/profile", icon: User, label: "Profile" },
@@ -41,12 +41,12 @@ export function BottomNav() {
               <Icon
                 className="w-[20px] h-[20px]"
                 strokeWidth={active ? 2.25 : 1.75}
-                style={{ color: active ? "#ffffff" : "#555869" }}
+                style={{ color: active ? "#ffffff" : "#8e9192" }}
               />
             </div>
             <span
               className="text-[10px] font-medium tracking-wide"
-              style={{ color: active ? "#ffffff" : "#555869" }}
+              style={{ color: active ? "#ffffff" : "#8e9192" }}
             >
               {label}
             </span>
