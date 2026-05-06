@@ -110,8 +110,8 @@ export function VehicleMap({ locations }: Props) {
   if (locations.length === 0) {
     return (
       <div
-        className="flex items-center justify-center h-64 rounded-xl text-sm"
-        style={{ background: "#1e1f23", color: "#6b7280" }}
+        className="flex items-center justify-center w-full h-full rounded-xl text-sm"
+        style={{ background: "#1e1f23", color: "#6b7280", minHeight: 200 }}
       >
         Nessun dato GPS
       </div>
@@ -121,8 +121,8 @@ export function VehicleMap({ locations }: Props) {
   return (
     <div
       ref={mapRef}
-      className="h-64 w-full rounded-xl overflow-hidden"
-      style={{ zIndex: 0 }}
+      className="w-full h-full"
+      style={{ zIndex: 0, minHeight: 200 }}
     />
   );
 }

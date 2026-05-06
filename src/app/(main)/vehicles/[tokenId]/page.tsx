@@ -6,11 +6,14 @@ import { useParams } from "next/navigation";
 import { TelemetrySignal, LatestStatus } from "@/types/dimo";
 import { SignalChart } from "@/components/SpeedChart";
 import dynamic from "next/dynamic";
-const VehicleMap = dynamic(() => import("@/components/VehicleMap").then(m => ({ default: m.VehicleMap })), { ssr: false, loading: () => <div className="h-64 rounded-xl animate-pulse" style={{ background: "#1e1f23" }} /> });
+const VehicleMap = dynamic(
+  () => import("@/components/VehicleMap").then((m) => ({ default: m.VehicleMap })),
+  { ssr: false, loading: () => <div className="rounded-xl animate-pulse" style={{ background: "#1e1f23", height: 300 }} /> }
+);
 import { formatSpeed, formatPercent } from "@/lib/utils";
 import {
   Loader2, AlertCircle, ArrowLeft, RefreshCw, Plug,
-  Zap, Gauge, Droplets, Thermometer, Route,
+  Zap, Gauge, Droplets, Thermometer, Route, MapPin, Wrench,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -61,7 +64,6 @@ class ErrorBoundary extends Component<
   }
 }
 
-// Defensive: handles both flat numbers and {timestamp, value} objects
 function extractNum(raw: unknown): number | null {
   if (raw == null) return null;
   if (typeof raw === "number") return isFinite(raw) ? raw : null;
@@ -72,15 +74,40 @@ function extractNum(raw: unknown): number | null {
   return null;
 }
 
+function formatTimestamp(ts: string | undefined): string | undefined {
+  if (!ts) return undefined;
+  const date = new Date(ts);
+  const now = new Date();
+  const time = date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  const isToday =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday =
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear();
+  if (isToday) return `oggi ${time}`;
+  if (isYesterday) return `ieri ${time}`;
+  return `${date.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" })} ${time}`;
+}
+
 // ─── metric card ─────────────────────────────────────────────────────────────
 
 function MetricCard({ label, value, subtitle }: { label: string; value: string; subtitle?: string }) {
   return (
     <div style={{ background: "#1e1f23", borderRadius: 16, padding: 16 }}>
-      <p style={{ fontSize: 11, color: "#8e9192", marginBottom: 6 }}>{label}</p>
-      <p className="font-bold leading-none text-white" style={{ fontSize: 22 }}>{value}</p>
+      <p
+        className="font-semibold tracking-widest uppercase"
+        style={{ fontSize: 10, color: "#8e9192", marginBottom: 8 }}
+      >
+        {label}
+      </p>
+      <p className="font-bold leading-none text-white" style={{ fontSize: 28 }}>{value}</p>
       {subtitle && (
-        <p style={{ fontSize: 10, color: "#8e9192", marginTop: 6 }}>{subtitle}</p>
+        <p style={{ fontSize: 11, color: "#8e9192", marginTop: 8 }}>{subtitle}</p>
       )}
     </div>
   );
@@ -102,8 +129,15 @@ function ChartPanel({
   return (
     <div style={{ background: "#1e1f23", borderRadius: 16, padding: 16, marginBottom: 12 }}>
       <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
-        {Icon && <Icon className="w-4 h-4" style={{ color: iconColor ?? "#8e9192" }} />}
-        <h3 className="text-xs font-semibold" style={{ color: "#8e9192" }}>{title}</h3>
+        {Icon && (
+          <div
+            className="flex items-center justify-center"
+            style={{ width: 24, height: 24, background: iconColor ? `${iconColor}22` : "#29292e", borderRadius: 6 }}
+          >
+            <Icon className="w-3.5 h-3.5" style={{ color: iconColor ?? "#8e9192" }} />
+          </div>
+        )}
+        <h3 className="text-sm font-semibold text-white">{title}</h3>
       </div>
       {children}
     </div>
@@ -120,7 +154,21 @@ export default function VehicleDetailPage() {
   const [error,          setError]          = useState<string | null>(null);
   const [range,          setRange]          = useState<Range>("30d");
   const [neverConnected, setNeverConnected] = useState(false);
+  const [vehicleName,    setVehicleName]    = useState<string>(`Veicolo #${tokenId}`);
   const firstLoad = useRef(true);
+
+  async function loadVehicleName() {
+    try {
+      const res  = await fetch("/api/vehicles");
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        const v = data.find((v: { tokenId: number }) => String(v.tokenId) === String(tokenId));
+        if (v?.definition) {
+          setVehicleName(`${v.definition.make} ${v.definition.model}`);
+        }
+      }
+    } catch { /* non-critical */ }
+  }
 
   async function loadTelemetry(checkConnected = false) {
     setLoading(true);
@@ -172,6 +220,7 @@ export default function VehicleDetailPage() {
   }
 
   useEffect(() => {
+    loadVehicleName();
     loadTelemetry(true);
     loadLatest();
     firstLoad.current = false;
@@ -185,9 +234,7 @@ export default function VehicleDetailPage() {
   }, [range]);
 
   const lastSignal  = signals.at(-1);
-  const lastUpdated = lastSignal?.timestamp
-    ? new Date(lastSignal.timestamp).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })
-    : undefined;
+  const lastUpdated = formatTimestamp(lastSignal?.timestamp);
 
   const speed    = extractNum(latest?.speed)                                             ?? lastSignal?.speed;
   const fuel     = extractNum(latest?.powertrainFuelSystemRelativeLevel)                 ?? lastSignal?.fuelLevel;
@@ -209,57 +256,56 @@ export default function VehicleDetailPage() {
     .filter(s => s.location?.latitude != null)
     .map(s => ({ timestamp: s.timestamp, latitude: s.location!.latitude, longitude: s.location!.longitude }));
 
+  const dtcCount = latest?.obdStatusDTCCount ?? null;
+
   return (
     <ErrorBoundary>
-    <div className="px-4 pt-6" style={{ minHeight: "100vh" }}>
+    <div className="px-4 pt-6 pb-8" style={{ minHeight: "100vh" }}>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Link href="/vehicles">
             <div
               className="flex items-center justify-center"
-              style={{ width: 36, height: 36, background: "#292a2e", borderRadius: 10 }}
+              style={{ width: 38, height: 38, background: "#1e1f23", borderRadius: 12 }}
             >
-              <ArrowLeft className="w-4 h-4" style={{ color: "#8e9192" }} />
+              <ArrowLeft className="w-4 h-4" style={{ color: "#ffffff" }} />
             </div>
           </Link>
           <div>
-            <h1 className="font-bold text-white leading-tight" style={{ fontSize: 18 }}>
-              Veicolo #{tokenId}
+            <h1 className="font-bold text-white leading-tight" style={{ fontSize: 24 }}>
+              {vehicleName}
             </h1>
-            <p style={{ fontSize: 11, color: "#8e9192" }}>Telemetria</p>
+            <p style={{ fontSize: 12, color: "#8e9192", marginTop: 1 }}>Telemetria</p>
           </div>
         </div>
         <button
           onClick={() => { loadTelemetry(false); loadLatest(); }}
           disabled={loading}
           className="flex items-center justify-center transition-opacity disabled:opacity-40"
-          style={{ width: 36, height: 36, background: "#292a2e", borderRadius: 10 }}
+          style={{ width: 38, height: 38, background: "#1e1f23", borderRadius: 12 }}
           aria-label="Aggiorna"
         >
           <RefreshCw
             className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
-            style={{ color: "#8e9192" }}
+            style={{ color: "#ffffff" }}
           />
         </button>
       </div>
 
       {/* ── Range pills ────────────────────────────────────────────────── */}
-      <div
-        className="flex gap-1 p-1 mb-5"
-        style={{ background: "#1e1f23", borderRadius: 12 }}
-      >
+      <div className="flex gap-2 mb-6">
         {RANGES.map((r) => {
           const active = r.value === range;
           return (
             <button
               key={r.value}
               onClick={() => setRange(r.value)}
-              className="flex-1 text-xs font-semibold py-1.5 rounded-lg transition-colors"
+              className="flex-1 text-xs font-semibold py-2 rounded-full transition-colors"
               style={{
-                background: active ? "#292a2e" : "transparent",
-                color:      active ? "#ffffff" : "#8e9192",
+                background: active ? "#ffffff" : "#1e1f23",
+                color:      active ? "#000000" : "#8e9192",
               }}
             >
               {r.label}
@@ -320,17 +366,37 @@ export default function VehicleDetailPage() {
           <div className="grid grid-cols-2 gap-3 mb-4">
             <MetricCard label="Velocità"     value={formatSpeed(speed)}  subtitle={lastUpdated} />
             <MetricCard label="Carburante"   value={formatPercent(fuel)} subtitle={lastUpdated} />
-            {engineOn && <MetricCard label="RPM"                   value={rpm     != null ? Math.round(rpm).toLocaleString() : "—"} subtitle={lastUpdated} />}
-            {engineOn && <MetricCard label="Liquido raffreddamento" value={coolant != null ? `${Math.round(coolant)}°C`        : "—"} subtitle={lastUpdated} />}
-            <MetricCard label="AdBlue"       value={adBlue   != null ? `${Math.round(adBlue)}%`      : "—"} subtitle={lastUpdated} />
-            <MetricCard label="Batteria 12V" value={voltage   != null ? `${voltage.toFixed(1)}V`      : "—"} subtitle={lastUpdated} />
+            {engineOn && (
+              <MetricCard
+                label="RPM"
+                value={rpm != null ? Math.round(rpm).toLocaleString() : "—"}
+                subtitle={lastUpdated}
+              />
+            )}
+            {engineOn && (
+              <MetricCard
+                label="Raffr. motore"
+                value={coolant != null ? `${Math.round(coolant)}°C` : "—"}
+                subtitle={lastUpdated}
+              />
+            )}
+            <MetricCard
+              label="AdBlue"
+              value={adBlue != null ? `${Math.round(adBlue)}%` : "—"}
+              subtitle={lastUpdated}
+            />
+            <MetricCard
+              label="Batteria 12V"
+              value={voltage != null ? `${voltage.toFixed(1)}V` : "—"}
+              subtitle={lastUpdated}
+            />
           </div>
 
-          {/* ── Secondary strip ──────────────────────────────────────── */}
-          {(odometer != null || extTemp != null || ignition != null || latest?.obdStatusDTCCount != null) && (
+          {/* ── Status strip ─────────────────────────────────────────── */}
+          {(odometer != null || extTemp != null || ignition != null || dtcCount != null) && (
             <div
-              className="flex flex-wrap gap-x-5 gap-y-2 px-4 py-3 rounded-2xl mb-4"
-              style={{ background: "#1e1f23" }}
+              className="flex flex-wrap gap-x-5 gap-y-2 px-4 py-3 mb-4"
+              style={{ background: "#1e1f23", borderRadius: 12 }}
             >
               {odometer != null && (
                 <div className="flex items-center gap-1.5">
@@ -352,20 +418,20 @@ export default function VehicleDetailPage() {
                 <div className="flex items-center gap-1.5">
                   <Zap className="w-3.5 h-3.5" style={{ color: "#8e9192" }} />
                   <span className="text-xs" style={{ color: "#8e9192" }}>
-                    Accensione{" "}
-                    <span className="font-semibold" style={{ color: ignition ? "#4ade80" : "#8e9192" }}>
-                      {ignition ? "ON" : "OFF"}
+                    Ignizione{" "}
+                    <span className="font-semibold" style={{ color: Number(ignition) !== 0 ? "#4ade80" : "#8e9192" }}>
+                      {Number(ignition) !== 0 ? "ON" : "OFF"}
                     </span>
                   </span>
                 </div>
               )}
-              {latest?.obdStatusDTCCount != null && (
+              {dtcCount != null && (
                 <div className="flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5" style={{ color: "#8e9192" }} />
+                  <Wrench className="w-3.5 h-3.5" style={{ color: "#8e9192" }} />
                   <span className="text-xs" style={{ color: "#8e9192" }}>
                     DTC{" "}
-                    <span className="font-semibold" style={{ color: latest.obdStatusDTCCount > 0 ? "#f87171" : "#4ade80" }}>
-                      {latest.obdStatusDTCCount}
+                    <span className="font-semibold" style={{ color: dtcCount > 0 ? "#f87171" : "#4ade80" }}>
+                      {dtcCount}
                     </span>
                   </span>
                 </div>
@@ -386,19 +452,30 @@ export default function VehicleDetailPage() {
               <ChartPanel icon={Droplets} iconColor="#f59e0b" title="Livello carburante (%)">
                 <SignalChart signals={fuelSignals}    field="fuelLevel"         label="Fuel"    color="#f59e0b" unit="%"    range={range} />
               </ChartPanel>
-              <ChartPanel title="Giri motore (RPM)">
+              <ChartPanel icon={Zap}      iconColor="#8b5cf6" title="Giri motore (RPM)">
                 <SignalChart signals={rpmSignals}     field="engineRpm"         label="RPM"     color="#8b5cf6" unit="rpm"  range={range} />
               </ChartPanel>
-              <ChartPanel title="Liquido raffreddamento (°C)">
+              <ChartPanel icon={Thermometer} iconColor="#ef4444" title="Liquido raffreddamento (°C)">
                 <SignalChart signals={coolantSignals} field="engineCoolantTemp" label="Coolant" color="#ef4444" unit="°C"   range={range} />
               </ChartPanel>
             </>
           )}
 
           {/* ── GPS Map ──────────────────────────────────────────────── */}
-          <ChartPanel title="Tracciato GPS">
-            <VehicleMap locations={locations} />
-          </ChartPanel>
+          <div style={{ background: "#1e1f23", borderRadius: 16, padding: 16, marginBottom: 12 }}>
+            <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+              <div
+                className="flex items-center justify-center"
+                style={{ width: 24, height: 24, background: "#22c55e22", borderRadius: 6 }}
+              >
+                <MapPin className="w-3.5 h-3.5" style={{ color: "#22c55e" }} />
+              </div>
+              <h3 className="text-sm font-semibold text-white">Percorso GPS</h3>
+            </div>
+            <div style={{ height: 300, borderRadius: 12, overflow: "hidden" }}>
+              <VehicleMap locations={locations} />
+            </div>
+          </div>
         </>
       )}
     </div>
