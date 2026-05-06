@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Component, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { TelemetrySignal, LatestStatus } from "@/types/dimo";
 import { SignalChart } from "@/components/SpeedChart";
@@ -24,6 +25,46 @@ const RANGES: { label: string; value: Range; hours: number }[] = [
   { label: "30d", value: "30d", hours: 720 },
   { label: "90d", value: "90d", hours: 2160 },
 ];
+
+// ─── error boundary ──────────────────────────────────────────────────────────
+
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      const err = this.state.error as Error;
+      return (
+        <div className="px-4 pt-6">
+          <div
+            className="rounded-2xl p-4"
+            style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)" }}
+          >
+            <p className="text-sm font-bold mb-2" style={{ color: "#f87171" }}>
+              {err.name}: {err.message}
+            </p>
+            {err.stack && (
+              <pre
+                className="text-[11px] overflow-x-auto whitespace-pre-wrap break-all"
+                style={{ color: "#fca5a5", opacity: 0.7 }}
+              >
+                {err.stack}
+              </pre>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── metric card ─────────────────────────────────────────────────────────────
 
@@ -136,6 +177,7 @@ export default function VehicleDetailPage() {
   const ignition = latest?.isIgnitionOn                                      ?? lastSignal?.isIgnitionOn;
 
   return (
+    <ErrorBoundary>
     <div className="px-4 pt-6" style={{ minHeight: "100vh" }}>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
@@ -345,5 +387,6 @@ export default function VehicleDetailPage() {
         </>
       )}
     </div>
+    </ErrorBoundary>
   );
 }
