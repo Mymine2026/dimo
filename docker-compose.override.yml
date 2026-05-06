@@ -1,0 +1,9 @@
+services:
+  app:
+    networks:
+      - default
+      - n8n-mymine-oefue4_default
+
+networks:
+  n8n-mymine-oefue4_default:
+    external: true
