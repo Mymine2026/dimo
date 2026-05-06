@@ -2,7 +2,8 @@
 
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { TelemetrySignal } from "@/types/dimo";
-import { format } from "date-fns";
+
+type Range = "24h" | "7d" | "30d" | "90d";
 
 interface Props {
   signals: TelemetrySignal[];
@@ -10,14 +11,15 @@ interface Props {
   label: string;
   color: string;
   unit: string;
+  range?: Range;
   transform?: (v: number) => number;
 }
 
-export function SignalChart({ signals, field, label, color, unit, transform }: Props) {
+export function SignalChart({ signals, field, label, color, unit, range = "24h", transform }: Props) {
   const data = signals
     .filter((s) => s[field] != null)
     .map((s) => ({
-      time: format(new Date(s.timestamp), "HH:mm"),
+      time: s.timestamp,
       value: transform ? transform(s[field] as number) : (s[field] as number),
     }));
 
@@ -25,6 +27,13 @@ export function SignalChart({ signals, field, label, color, unit, transform }: P
     ...point,
     value: typeof point.value === 'number' ? point.value : (parseFloat(String(point.value)) || 0),
   }));
+
+  const formatTick = (timestamp: string | number) => {
+    const date = new Date(String(timestamp));
+    if (range === "24h") return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    if (range === "90d") return date.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' });
+    return date.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) + ' ' + date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  };
 
   if (safeData.length === 0) {
     return (
@@ -44,7 +53,7 @@ export function SignalChart({ signals, field, label, color, unit, transform }: P
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-        <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#71717a" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+        <XAxis dataKey="time" tickFormatter={formatTick} tick={{ fontSize: 11, fill: "#71717a" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
         <YAxis tick={{ fontSize: 11, fill: "#71717a" }} tickLine={false} axisLine={false} />
         <Tooltip
           contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, fontSize: 12 }}

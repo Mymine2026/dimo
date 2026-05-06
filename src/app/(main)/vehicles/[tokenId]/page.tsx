@@ -69,11 +69,12 @@ class ErrorBoundary extends Component<
 
 // ─── metric card ─────────────────────────────────────────────────────────────
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function MetricCard({ label, value, subtitle }: { label: string; value: string; subtitle?: string }) {
   return (
     <div style={{ background: "#1e1f23", borderRadius: 16, padding: 16 }}>
       <p className="text-[11px] mb-1.5" style={{ color: "#6b7280" }}>{label}</p>
       <p className="text-[22px] font-bold leading-none text-white">{value}</p>
+      {subtitle && <p className="text-[10px] mt-1.5" style={{ color: "#4b5563" }}>{subtitle}</p>}
     </div>
   );
 }
@@ -184,7 +185,11 @@ export default function VehicleDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range]);
 
-  const lastSignal = signals.at(-1);
+  const lastSignal  = signals.at(-1);
+  const lastUpdated = lastSignal?.timestamp
+    ? new Date(lastSignal.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+    : undefined;
+
   const speed    = latest?.speed                                             ?? lastSignal?.speed;
   const fuel     = latest?.powertrainFuelSystemRelativeLevel                 ?? lastSignal?.fuelLevel;
   const rpm      = latest?.powertrainCombustionEngineSpeed                   ?? lastSignal?.engineRpm;
@@ -194,6 +199,7 @@ export default function VehicleDetailPage() {
   const odometer = latest?.powertrainTransmissionTravelledDistance           ?? lastSignal?.odometer;
   const extTemp  = latest?.exteriorAirTemperature                            ?? lastSignal?.exteriorTemp;
   const ignition = latest?.isIgnitionOn                                      ?? lastSignal?.isIgnitionOn;
+  const engineOn = ignition == null || Number(ignition) !== 0;
 
   const speedSignals   = signals
     .filter(s => s.timestamp && s.speed !== undefined)
@@ -325,12 +331,12 @@ export default function VehicleDetailPage() {
       {(!loading || signals.length > 0) && (
         <>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <MetricCard label="Velocità"   value={formatSpeed(speed)} />
-            <MetricCard label="Carburante" value={formatPercent(fuel)} />
-            <MetricCard label="RPM"        value={rpm != null ? Math.round(rpm).toLocaleString() : "—"} />
-            <MetricCard label="Liquido raffreddamento" value={coolant != null ? `${Math.round(coolant)}°C` : "—"} />
-            <MetricCard label="AdBlue"     value={adBlue != null ? `${Math.round(adBlue)}%` : "—"} />
-            <MetricCard label="Batteria 12V" value={voltage != null ? `${voltage.toFixed(1)}V` : "—"} />
+            <MetricCard label="Velocità"     value={formatSpeed(speed)}       subtitle={lastUpdated} />
+            <MetricCard label="Carburante"   value={formatPercent(fuel)}      subtitle={lastUpdated} />
+            {engineOn && <MetricCard label="RPM"   value={rpm != null ? Math.round(rpm).toLocaleString() : "—"} subtitle={lastUpdated} />}
+            {engineOn && <MetricCard label="Liquido raffreddamento" value={coolant != null ? `${Math.round(coolant)}°C` : "—"} subtitle={lastUpdated} />}
+            <MetricCard label="AdBlue"       value={adBlue != null ? `${Math.round(adBlue)}%` : "—"}    subtitle={lastUpdated} />
+            <MetricCard label="Batteria 12V" value={voltage != null ? `${voltage.toFixed(1)}V` : "—"}   subtitle={lastUpdated} />
           </div>
 
           {/* ── Secondary strip ──────────────────────────────────────── */}
@@ -398,16 +404,16 @@ export default function VehicleDetailPage() {
           ) : (
             <>
               <ChartPanel icon={Gauge} iconColor="#3b82f6" title="Velocità (km/h)">
-                <SignalChart signals={speedSignals} field="speed" label="Speed" color="#3b82f6" unit="km/h" />
+                <SignalChart signals={speedSignals} field="speed" label="Speed" color="#3b82f6" unit="km/h" range={range} />
               </ChartPanel>
               <ChartPanel icon={Droplets} iconColor="#f59e0b" title="Livello carburante (%)">
-                <SignalChart signals={fuelSignals} field="fuelLevel" label="Fuel" color="#f59e0b" unit="%" />
+                <SignalChart signals={fuelSignals} field="fuelLevel" label="Fuel" color="#f59e0b" unit="%" range={range} />
               </ChartPanel>
               <ChartPanel title="Giri motore (RPM)">
-                <SignalChart signals={rpmSignals} field="engineRpm" label="RPM" color="#8b5cf6" unit="rpm" />
+                <SignalChart signals={rpmSignals} field="engineRpm" label="RPM" color="#8b5cf6" unit="rpm" range={range} />
               </ChartPanel>
               <ChartPanel title="Liquido raffreddamento (°C)">
-                <SignalChart signals={coolantSignals} field="engineCoolantTemp" label="Coolant" color="#ef4444" unit="°C" />
+                <SignalChart signals={coolantSignals} field="engineCoolantTemp" label="Coolant" color="#ef4444" unit="°C" range={range} />
               </ChartPanel>
             </>
           )}
