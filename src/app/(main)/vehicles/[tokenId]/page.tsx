@@ -383,7 +383,10 @@ export default function VehicleDetailPage() {
 
           {/* ── GPS Map ──────────────────────────────────────────────── */}
           <ChartPanel title="Tracciato GPS">
-            <VehicleMap signals={signals} />
+            {/* <VehicleMap signals={signals} /> */}
+            <div className="flex items-center justify-center h-64 rounded-xl" style={{ background: "#292a2e", color: "#6b7280", fontSize: 13 }}>
+              Mappa temporaneamente disabilitata
+            </div>
           </ChartPanel>
         </>
       )}
