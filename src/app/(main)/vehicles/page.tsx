@@ -125,9 +125,95 @@ export default function VehiclesPage() {
     : vehicles;
 
   return (
-    <div style={{color: 'white', padding: '20px'}}>
-      <h1>Test page</h1>
-      <p>Session: {session?.user?.email}</p>
+    <div className="px-4 pt-6" style={{ minHeight: "100vh" }}>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-5">
+        <div>
+          <h1 className="text-[28px] font-bold text-white leading-tight tracking-tight">
+            Fleet
+          </h1>
+          <div className="flex items-center gap-2 mt-1.5">
+            {session?.user?.role && (
+              <span
+                className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full tracking-widest uppercase"
+                style={{ background: "rgba(99,102,241,0.15)", color: "#818cf8" }}
+              >
+                {session.user.role}
+              </span>
+            )}
+            {!loading && !error && (
+              <span className="text-xs" style={{ color: "#6b7280" }}>
+                {vehicles.length} veicol{vehicles.length === 1 ? "o" : "i"}
+              </span>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className="w-9 h-9 rounded-xl flex items-center justify-center mt-1 transition-opacity hover:opacity-70"
+          style={{ background: "#1e1f23" }}
+          aria-label="Logout"
+        >
+          <LogOut className="w-[17px] h-[17px]" style={{ color: "#9ca3af" }} />
+        </button>
+      </div>
+
+      {/* Search bar */}
+      <div
+        className="flex items-center gap-2.5 px-3.5 py-3 mb-5"
+        style={{
+          background: "#1e1f23",
+          border: "1px solid #444748",
+          borderRadius: 14,
+        }}
+      >
+        <Search className="w-4 h-4 shrink-0" style={{ color: "#6b7280" }} />
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cerca veicolo..."
+          className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-[#6b7280]"
+          style={{ caretColor: "#818cf8" }}
+        />
+      </div>
+
+      {/* Loading */}
+      {loading && (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#6b7280" }} />
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div
+          className="flex items-start gap-3 rounded-2xl p-4 mb-4"
+          style={{
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.18)",
+          }}
+        >
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "#f87171" }} />
+          <span className="text-sm" style={{ color: "#fca5a5" }}>{error}</span>
+        </div>
+      )}
+
+      {/* Vehicle list */}
+      {!loading && !error && (
+        <>
+          {filtered.map((v) => (
+            <VehicleCard key={v.tokenId} vehicle={v} />
+          ))}
+          {filtered.length === 0 && (
+            <p className="text-sm text-center py-10" style={{ color: "#4b5563" }}>
+              {search
+                ? `Nessun risultato per "${search}"`
+                : "Nessun veicolo nella flotta."}
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }
