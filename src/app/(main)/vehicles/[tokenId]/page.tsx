@@ -177,6 +177,19 @@ export default function VehicleDetailPage() {
   const extTemp  = latest?.exteriorAirTemperature                            ?? lastSignal?.exteriorTemp;
   const ignition = latest?.isIgnitionOn                                      ?? lastSignal?.isIgnitionOn;
 
+  const speedSignals   = signals
+    .filter(s => s.timestamp && s.speed !== undefined)
+    .map(s => ({ ...s, speed: Number(s.speed) || 0 }));
+  const fuelSignals    = signals
+    .filter(s => s.timestamp && s.fuelLevel !== undefined)
+    .map(s => ({ ...s, fuelLevel: Number(s.fuelLevel) || 0 }));
+  const rpmSignals     = signals
+    .filter(s => s.timestamp && s.engineRpm !== undefined)
+    .map(s => ({ ...s, engineRpm: Number(s.engineRpm) || 0 }));
+  const coolantSignals = signals
+    .filter(s => s.timestamp && s.engineCoolantTemp !== undefined)
+    .map(s => ({ ...s, engineCoolantTemp: Number(s.engineCoolantTemp) || 0 }));
+
   return (
     <ErrorBoundary>
     <div className="px-4 pt-6" style={{ minHeight: "100vh" }}>
@@ -367,16 +380,16 @@ export default function VehicleDetailPage() {
           ) : (
             <>
               <ChartPanel icon={Gauge} iconColor="#3b82f6" title="Velocità (km/h)">
-                <SignalChart signals={signals} field="speed" label="Speed" color="#3b82f6" unit="km/h" />
+                <SignalChart signals={speedSignals} field="speed" label="Speed" color="#3b82f6" unit="km/h" />
               </ChartPanel>
               <ChartPanel icon={Droplets} iconColor="#f59e0b" title="Livello carburante (%)">
-                <SignalChart signals={signals} field="fuelLevel" label="Fuel" color="#f59e0b" unit="%" />
+                <SignalChart signals={fuelSignals} field="fuelLevel" label="Fuel" color="#f59e0b" unit="%" />
               </ChartPanel>
               <ChartPanel title="Giri motore (RPM)">
-                <SignalChart signals={signals} field="engineRpm" label="RPM" color="#8b5cf6" unit="rpm" />
+                <SignalChart signals={rpmSignals} field="engineRpm" label="RPM" color="#8b5cf6" unit="rpm" />
               </ChartPanel>
               <ChartPanel title="Liquido raffreddamento (°C)">
-                <SignalChart signals={signals} field="engineCoolantTemp" label="Coolant" color="#ef4444" unit="°C" />
+                <SignalChart signals={coolantSignals} field="engineCoolantTemp" label="Coolant" color="#ef4444" unit="°C" />
               </ChartPanel>
             </>
           )}
