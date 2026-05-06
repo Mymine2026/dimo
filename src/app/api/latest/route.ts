@@ -33,7 +33,17 @@ export async function GET(req: Request) {
       signalsLatest: Record<string, { timestamp: string; value: unknown } | null> | null
     }>(vehicleJwt, LATEST_QUERY, { tokenId: parseInt(tokenId) });
 
-    return NextResponse.json(data?.signalsLatest ?? null);
+    const raw = data?.signalsLatest;
+    if (!raw) return NextResponse.json(null);
+
+    // GraphQL returns each signal as { timestamp, value } — flatten to plain values
+    const flattened: Record<string, unknown> = {};
+    for (const [key, signal] of Object.entries(raw)) {
+      flattened[key] = signal != null && typeof signal === 'object' && 'value' in signal
+        ? signal.value
+        : signal;
+    }
+    return NextResponse.json(flattened);
   } catch (err) {
     return NextResponse.json({ error: sanitizeError(err) }, { status: 500 });
   }
