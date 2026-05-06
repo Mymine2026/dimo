@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { TelemetrySignal, LatestStatus } from "@/types/dimo";
 import { SignalChart } from "@/components/SpeedChart";
 import dynamic from "next/dynamic";
-const VehicleMap = dynamic(() => import("@/components/VehicleMap").then(m => ({ default: m.VehicleMap })), { ssr: false });
+const VehicleMap = dynamic(() => import("@/components/VehicleMap").then(m => ({ default: m.VehicleMap })), { ssr: false, loading: () => <div className="h-64 rounded-xl animate-pulse" style={{ background: "#1a1b1e" }} /> });
 import { formatSpeed, formatPercent } from "@/lib/utils";
 import {
   Loader2, AlertCircle, ArrowLeft, RefreshCw, Plug,
@@ -214,6 +214,10 @@ export default function VehicleDetailPage() {
     .filter(s => s.timestamp && s.engineCoolantTemp !== undefined)
     .map(s => ({ ...s, engineCoolantTemp: Number(s.engineCoolantTemp) || 0 }));
 
+  const gpsPoints = signals
+    .filter(s => s.location != null)
+    .map(s => ({ timestamp: s.timestamp, location: s.location! }));
+
   return (
     <ErrorBoundary>
     <div className="px-4 pt-6" style={{ minHeight: "100vh" }}>
@@ -420,10 +424,7 @@ export default function VehicleDetailPage() {
 
           {/* ── GPS Map ──────────────────────────────────────────────── */}
           <ChartPanel title="Tracciato GPS">
-            {/* <VehicleMap signals={signals} /> */}
-            <div className="flex items-center justify-center h-64 rounded-xl" style={{ background: "#292a2e", color: "#6b7280", fontSize: 13 }}>
-              Mappa temporaneamente disabilitata
-            </div>
+            <VehicleMap points={gpsPoints} />
           </ChartPanel>
         </>
       )}
