@@ -214,9 +214,9 @@ export default function VehicleDetailPage() {
     .filter(s => s.timestamp && s.engineCoolantTemp !== undefined)
     .map(s => ({ ...s, engineCoolantTemp: Number(s.engineCoolantTemp) || 0 }));
 
-  const gpsPoints = signals
-    .filter(s => s.location != null)
-    .map(s => ({ timestamp: s.timestamp, location: s.location! }));
+  const locations = signals
+    .filter(s => s.location?.latitude != null)
+    .map(s => ({ timestamp: s.timestamp, latitude: s.location!.latitude, longitude: s.location!.longitude }));
 
   return (
     <ErrorBoundary>
@@ -424,7 +424,7 @@ export default function VehicleDetailPage() {
 
           {/* ── GPS Map ──────────────────────────────────────────────── */}
           <ChartPanel title="Tracciato GPS">
-            <VehicleMap points={gpsPoints} />
+            <VehicleMap locations={locations} />
           </ChartPanel>
         </>
       )}
