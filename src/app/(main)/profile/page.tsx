@@ -1,7 +1,8 @@
 "use client";
 
 import { useSession, signOut } from "next-auth/react";
-import { Shield, LogOut } from "lucide-react";
+import { Shield, LogOut, ChevronRight, Settings2 } from "lucide-react";
+import Link from "next/link";
 
 export default function ProfilePage() {
   const { data: session } = useSession();
@@ -48,6 +49,19 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* ── Admin link (super_admin only) ────────────────────────── */}
+      {role === "super_admin" && (
+        <Link
+          href="/admin"
+          className="flex items-center gap-3 w-full mb-3 transition-opacity active:opacity-70"
+          style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.18)", borderRadius: 16, padding: 16 }}
+        >
+          <Settings2 className="w-4 h-4 shrink-0" style={{ color: "#a78bfa" }} />
+          <span className="font-semibold flex-1" style={{ fontSize: 14, color: "#a78bfa" }}>Pannello Admin</span>
+          <ChevronRight className="w-4 h-4 shrink-0" style={{ color: "#a78bfa" }} />
+        </Link>
+      )}
 
       {/* ── Logout button ────────────────────────────────────────── */}
       <button

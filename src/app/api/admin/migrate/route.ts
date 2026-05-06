@@ -1,0 +1,31 @@
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import pool from "@/lib/db";
+
+export async function POST() {
+  const session = await getServerSession(authOptions);
+  if ((session?.user as { role?: string })?.role !== "super_admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS companies (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_vehicles (
+      id         SERIAL PRIMARY KEY,
+      token_id   TEXT NOT NULL UNIQUE,
+      name       TEXT,
+      plate      TEXT,
+      company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+      user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  return NextResponse.json({ ok: true });
+}
