@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { TelemetrySignal, LatestStatus } from "@/types/dimo";
 import { SignalChart } from "@/components/SpeedChart";
-import { VehicleMap } from "@/components/VehicleMap";
+import dynamic from "next/dynamic";
+const VehicleMap = dynamic(() => import("@/components/VehicleMap").then(m => m.VehicleMap), { ssr: false });
 import { formatSpeed, formatPercent } from "@/lib/utils";
 import {
   Loader2, AlertCircle, ArrowLeft, RefreshCw, Plug,
