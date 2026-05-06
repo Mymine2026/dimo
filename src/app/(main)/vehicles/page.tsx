@@ -8,7 +8,7 @@ import { useSession, signOut } from "next-auth/react";
 import { Vehicle } from "@/types/dimo";
 import { Loader2, AlertCircle, Search, Car, LogOut } from "lucide-react";
 
-const MapSection = dynamic(() => import("@/components/VehicleMap"), { ssr: false });
+const MapSection = dynamic(() => import("@/components/VehicleMap").then(m => ({ default: m.VehicleMap })), { ssr: false });
 
 type VehicleStatus = "ACTIVE" | "IN SERVICE" | "ERROR";
 
