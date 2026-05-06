@@ -67,6 +67,18 @@ class ErrorBoundary extends Component<
   }
 }
 
+// Defensive: handles both flat numbers and {timestamp, value} objects that
+// DIMO's telemetry API may return if the flatten step in /api/latest fails.
+function extractNum(raw: unknown): number | null {
+  if (raw == null) return null;
+  if (typeof raw === "number") return isFinite(raw) ? raw : null;
+  if (typeof raw === "object" && "value" in (raw as object)) {
+    const v = (raw as Record<string, unknown>).value;
+    return typeof v === "number" && isFinite(v) ? v : null;
+  }
+  return null;
+}
+
 // ─── metric card ─────────────────────────────────────────────────────────────
 
 function MetricCard({ label, value, subtitle }: { label: string; value: string; subtitle?: string }) {
@@ -190,15 +202,15 @@ export default function VehicleDetailPage() {
     ? new Date(lastSignal.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
     : undefined;
 
-  const speed    = latest?.speed                                             ?? lastSignal?.speed;
-  const fuel     = latest?.powertrainFuelSystemRelativeLevel                 ?? lastSignal?.fuelLevel;
-  const rpm      = latest?.powertrainCombustionEngineSpeed                   ?? lastSignal?.engineRpm;
-  const coolant  = latest?.powertrainCombustionEngineECT                     ?? lastSignal?.engineCoolantTemp;
-  const adBlue   = latest?.powertrainCombustionEngineDieselExhaustFluidLevel ?? lastSignal?.adBlue;
-  const voltage  = latest?.lowVoltageBatteryCurrentVoltage                   ?? lastSignal?.batteryVoltage;
-  const odometer = latest?.powertrainTransmissionTravelledDistance           ?? lastSignal?.odometer;
-  const extTemp  = latest?.exteriorAirTemperature                            ?? lastSignal?.exteriorTemp;
-  const ignition = latest?.isIgnitionOn                                      ?? lastSignal?.isIgnitionOn;
+  const speed    = extractNum(latest?.speed)                                             ?? lastSignal?.speed;
+  const fuel     = extractNum(latest?.powertrainFuelSystemRelativeLevel)                 ?? lastSignal?.fuelLevel;
+  const rpm      = extractNum(latest?.powertrainCombustionEngineSpeed)                   ?? lastSignal?.engineRpm;
+  const coolant  = extractNum(latest?.powertrainCombustionEngineECT)                     ?? lastSignal?.engineCoolantTemp;
+  const adBlue   = extractNum(latest?.powertrainCombustionEngineDieselExhaustFluidLevel) ?? lastSignal?.adBlue;
+  const voltage  = extractNum(latest?.lowVoltageBatteryCurrentVoltage)                   ?? lastSignal?.batteryVoltage;
+  const odometer = extractNum(latest?.powertrainTransmissionTravelledDistance)           ?? lastSignal?.odometer;
+  const extTemp  = extractNum(latest?.exteriorAirTemperature)                            ?? lastSignal?.exteriorTemp;
+  const ignition = extractNum(latest?.isIgnitionOn)                                      ?? lastSignal?.isIgnitionOn;
   const engineOn = ignition == null || Number(ignition) !== 0;
 
   const speedSignals   = signals
