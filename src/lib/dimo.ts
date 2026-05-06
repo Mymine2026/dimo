@@ -61,9 +61,19 @@ export async function getDeveloperJwt(): Promise<string> {
     body: body.toString(),
   });
   const sText = await sRes.text();
-  let sData: { access_token?: string; token?: string };
-  try { sData = JSON.parse(sText); } catch {
-    throw new Error(`Auth submit: invalid response (${sRes.status}): ${sText.slice(0, 200)}`);
+  let sData: { access_token?: string; token?: string } = {};
+  // DIMO API sometimes returns two concatenated JSON objects
+  // Try full parse first, then extract token with regex
+  try {
+    sData = JSON.parse(sText);
+  } catch {
+    // Try to extract access_token from concatenated JSON response
+    const tokenMatch = sText.match(/"access_token"\s*:\s*"([^"]+)"/);
+    if (tokenMatch) {
+      sData = { access_token: tokenMatch[1] };
+    } else {
+      throw new Error(`Auth submit: invalid response (${sRes.status}): ${sText.slice(0, 200)}`);
+    }
   }
   if (!sRes.ok) throw new Error(`Auth submit failed (${sRes.status}): ${sText.slice(0, 200)}`);
   const token = sData?.access_token ?? sData?.token ?? "";
