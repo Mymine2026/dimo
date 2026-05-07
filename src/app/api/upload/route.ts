@@ -39,5 +39,5 @@ export async function POST(req: NextRequest) {
   const filename = `${Date.now()}_${safeName}`;
   await writeFile(join(uploadDir, filename), buffer);
 
-  return NextResponse.json({ url: `/uploads/${filename}` });
+  return NextResponse.json({ url: `/api/documents/file/${filename}` });
 }
