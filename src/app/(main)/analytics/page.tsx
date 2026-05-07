@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle, ChevronDown, Clock, Route, Wrench, X,
+  AlertTriangle, BarChart2, ChevronDown, Clock, Route, Wrench, X,
 } from "lucide-react";
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -391,6 +391,58 @@ export default function AnalyticsPage() {
         </p>
       ) : (
         <>
+          {/* ── Stats row ── */}
+          {!loadingTrips && (() => {
+            const totalKm   = sessions.reduce((s, t) => s + (t.km ?? 0), 0);
+            const activeDays = days.filter(d => d.totalKm != null && d.totalKm > 0).length;
+            const avgKmDay  = activeDays > 0 ? Math.round(totalKm / activeDays) : 0;
+            return (
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                {[
+                  { label: "Km (7gg)", value: Math.round(totalKm).toLocaleString(), color: "#3b82f6" },
+                  { label: "Sessioni", value: sessions.length,                       color: "#8b5cf6" },
+                  { label: "Km/giorno", value: avgKmDay.toLocaleString(),            color: "#4ade80" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="flex flex-col items-center rounded-2xl py-3" style={{ background: "#1e1f23" }}>
+                    <span className="font-bold leading-none" style={{ fontSize: 20, color }}>{value}</span>
+                    <span className="font-semibold tracking-wider uppercase mt-1" style={{ fontSize: 9, color: "#8e9192" }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* ── Km giornalieri bar chart ── */}
+          {!loadingTrips && days.length > 0 && (() => {
+            const maxKm = Math.max(...days.map(d => d.totalKm ?? 0), 1);
+            return (
+              <Card style={{ marginBottom: 12 }}>
+                <SectionTitle icon={BarChart2} color="#3b82f6" title="Km giornalieri (7gg)" />
+                <div className="flex items-end gap-1.5" style={{ height: 80 }}>
+                  {days.slice().reverse().map((d) => {
+                    const km  = d.totalKm ?? 0;
+                    const pct = Math.max(4, Math.round((km / maxKm) * 100));
+                    return (
+                      <div key={d.isoDate} className="flex flex-col items-center gap-1" style={{ flex: 1 }}>
+                        <div
+                          style={{
+                            width: "100%", height: `${pct}%`,
+                            background: km > 0 ? "#3b82f6" : "#2a2b30",
+                            borderRadius: "4px 4px 2px 2px",
+                            minHeight: 4,
+                          }}
+                        />
+                        <span style={{ fontSize: 8, color: "#8e9192", textAlign: "center" }}>
+                          {new Date(d.isoDate).toLocaleDateString("it-IT", { weekday: "short" }).slice(0, 2)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })()}
+
           {/* ── AdBlue banner ── */}
           {adBlue != null && adBlue < 25 && (
             <div

@@ -23,8 +23,8 @@ function computeStatus(v: Vehicle): VehicleStatus {
 }
 
 const STATUS_CONFIG: Record<VehicleStatus, { dot: string; badge: string; text: string }> = {
-  "ACTIVE":     { dot: "#4ade80", badge: "rgba(74,222,128,0.12)", text: "#4ade80" },
-  "IN SERVICE": { dot: "#60a5fa", badge: "rgba(96,165,250,0.12)", text: "#60a5fa" },
+  "ACTIVE":     { dot: "#4ade80", badge: "rgba(74,222,128,0.12)",  text: "#4ade80" },
+  "IN SERVICE": { dot: "#60a5fa", badge: "rgba(96,165,250,0.12)",  text: "#60a5fa" },
   "NO SIGNAL":  { dot: "#6b7280", badge: "rgba(107,114,128,0.12)", text: "#6b7280" },
 };
 
@@ -33,6 +33,31 @@ function healthColor(score: number): string {
   if (score >= 50) return "#f59e0b";
   return "#f87171";
 }
+
+// ─── stat pill ────────────────────────────────────────────────────────────────
+
+function StatPill({
+  label, value, color,
+}: { label: string; value: number | string; color?: string }) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center rounded-2xl py-3"
+      style={{ background: "#1e1f23", flex: 1 }}
+    >
+      <span className="font-bold leading-none" style={{ fontSize: 22, color: color ?? "#ffffff" }}>
+        {value}
+      </span>
+      <span
+        className="font-semibold tracking-wider uppercase mt-1"
+        style={{ fontSize: 9, color: "#8e9192" }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// ─── vehicle card ─────────────────────────────────────────────────────────────
 
 function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
   const status = computeStatus(vehicle);
@@ -51,9 +76,9 @@ function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
         {/* Icon box */}
         <div
           className="shrink-0 flex items-center justify-center"
-          style={{ width: 48, height: 48, background: "#292a2e", borderRadius: 12 }}
+          style={{ width: 52, height: 52, background: "#292a2e", borderRadius: 14 }}
         >
-          <Truck className="w-5 h-5" style={{ color: "#9ca3af" }} />
+          <Truck className="w-6 h-6" style={{ color: "#9ca3af" }} />
         </div>
 
         {/* Name + meta */}
@@ -64,13 +89,12 @@ function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           <p className="truncate" style={{ color: "#8e9192", fontSize: 12, marginTop: 2 }}>
             {year} · #{vehicle.tokenId}
           </p>
-          {/* Connectivity chips */}
           <div className="flex items-center gap-1.5 mt-2">
             {hasOBD && (
               <span
                 className="flex items-center gap-1 font-semibold"
                 style={{
-                  fontSize: 9, padding: "2px 6px", borderRadius: 6,
+                  fontSize: 9, padding: "2px 7px", borderRadius: 6,
                   background: "rgba(96,165,250,0.12)", color: "#60a5fa",
                   letterSpacing: "0.05em", textTransform: "uppercase",
                 }}
@@ -82,7 +106,7 @@ function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
               <span
                 className="flex items-center gap-1 font-semibold"
                 style={{
-                  fontSize: 9, padding: "2px 6px", borderRadius: 6,
+                  fontSize: 9, padding: "2px 7px", borderRadius: 6,
                   background: "rgba(139,92,246,0.12)", color: "#a78bfa",
                   letterSpacing: "0.05em", textTransform: "uppercase",
                 }}
@@ -93,21 +117,14 @@ function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
           </div>
         </div>
 
-        {/* Right side: health + status */}
+        {/* Right: health score + status */}
         <div className="shrink-0 flex flex-col items-end gap-1.5">
-          <span
-            className="font-bold leading-none"
-            style={{ fontSize: 30, color: healthColor(health) }}
-          >
+          <span className="font-bold leading-none" style={{ fontSize: 32, color: healthColor(health) }}>
             {health}
           </span>
-          <span
-            className="font-semibold tracking-widest uppercase"
-            style={{ fontSize: 9, color: "#8e9192" }}
-          >
+          <span className="font-semibold tracking-widest uppercase" style={{ fontSize: 9, color: "#8e9192" }}>
             Health
           </span>
-          {/* Status badge */}
           <span
             className="flex items-center gap-1 font-bold"
             style={{
@@ -116,9 +133,7 @@ function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
               letterSpacing: "0.08em", textTransform: "uppercase",
             }}
           >
-            <span
-              style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.dot, display: "inline-block" }}
-            />
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.dot, display: "inline-block" }} />
             {status}
           </span>
         </div>
@@ -126,6 +141,8 @@ function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
     </Link>
   );
 }
+
+// ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function VehiclesPage() {
   const { data: session, status } = useSession();
@@ -140,7 +157,7 @@ export default function VehiclesPage() {
     fetch("/api/vehicles")
       .then((res) => res.json().then((data: unknown) => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
-        if (!ok) throw new Error((data as { error?: string }).error ?? "Errore caricamento veicoli");
+        if (!ok) throw new Error((data as { error?: string }).error ?? "Errore caricamento");
         setVehicles(data as Vehicle[]);
       })
       .catch((e: unknown) => setError(String(e)))
@@ -150,7 +167,6 @@ export default function VehiclesPage() {
   if (status === "loading") return null;
   if (status === "unauthenticated") { router.push("/login"); return null; }
 
-  const role    = (session?.user as { role?: string } | undefined)?.role ?? "";
   const initial = session?.user?.email?.[0]?.toUpperCase() ?? "?";
 
   const filtered = search
@@ -165,12 +181,14 @@ export default function VehiclesPage() {
       })
     : vehicles;
 
-  const activeCount = vehicles.filter((v) => computeStatus(v) === "ACTIVE").length;
+  const activeCount    = vehicles.filter((v) => computeStatus(v) === "ACTIVE").length;
+  const serviceCount   = vehicles.filter((v) => computeStatus(v) === "IN SERVICE").length;
+  const noSignalCount  = vehicles.filter((v) => computeStatus(v) === "NO SIGNAL").length;
 
   return (
     <div className="px-4 pt-6 pb-8" style={{ minHeight: "100vh" }}>
 
-      {/* ── Logo row ─────────────────────────────────────────────── */}
+      {/* ── Header ── */}
       <div className="flex items-center justify-between mb-5">
         <div>
           <p className="font-bold text-white" style={{ fontSize: 16, lineHeight: 1 }}>MyMine</p>
@@ -184,31 +202,20 @@ export default function VehiclesPage() {
         </div>
       </div>
 
-      {/* ── Title + summary stats ─────────────────────────────────── */}
-      <div className="mb-5">
-        <div className="flex items-center gap-2.5 flex-wrap mb-1">
-          <h1 className="font-bold text-white leading-none" style={{ fontSize: 28 }}>Fleet</h1>
-          {role && (
-            <span
-              className="font-bold tracking-widest uppercase"
-              style={{
-                fontSize: 10, padding: "3px 10px", borderRadius: 999,
-                background: "rgba(99,102,241,0.15)", color: "#818cf8",
-              }}
-            >
-              {role}
-            </span>
-          )}
-        </div>
-        {!loading && !error && (
-          <p style={{ fontSize: 13, color: "#8e9192" }}>
-            {vehicles.length} veicol{vehicles.length === 1 ? "o" : "i"} ·{" "}
-            <span style={{ color: "#4ade80" }}>{activeCount} attiv{activeCount === 1 ? "o" : "i"}</span>
-          </p>
-        )}
-      </div>
+      {/* ── Title ── */}
+      <h1 className="font-bold text-white mb-4" style={{ fontSize: 28 }}>Fleet</h1>
 
-      {/* ── Search bar ───────────────────────────────────────────── */}
+      {/* ── Stats pills ── */}
+      {!loading && !error && (
+        <div className="flex gap-2 mb-5">
+          <StatPill label="Active"     value={activeCount}   color="#4ade80" />
+          <StatPill label="In Service" value={serviceCount}  color="#60a5fa" />
+          <StatPill label="No Signal"  value={noSignalCount} color="#6b7280" />
+          <StatPill label="Total"      value={vehicles.length} />
+        </div>
+      )}
+
+      {/* ── Search ── */}
       <div
         className="flex items-center gap-2.5 px-3.5 py-3 mb-5"
         style={{ background: "#1e1f23", borderRadius: 12 }}
@@ -223,14 +230,14 @@ export default function VehiclesPage() {
         />
       </div>
 
-      {/* ── Loading ──────────────────────────────────────────────── */}
+      {/* ── Loading ── */}
       {loading && (
         <div className="flex justify-center py-16">
           <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#8e9192" }} />
         </div>
       )}
 
-      {/* ── Error ────────────────────────────────────────────────── */}
+      {/* ── Error ── */}
       {error && (
         <div
           className="flex items-start gap-3 rounded-2xl p-4 mb-4"
@@ -241,7 +248,7 @@ export default function VehiclesPage() {
         </div>
       )}
 
-      {/* ── Vehicle list ─────────────────────────────────────────── */}
+      {/* ── Vehicle list ── */}
       {!loading && !error && (
         <>
           {filtered.map((v) => <VehicleCard key={v.tokenId} vehicle={v} />)}
@@ -252,7 +259,7 @@ export default function VehiclesPage() {
             >
               <Truck className="w-8 h-8 mb-3" style={{ color: "#3a3b3f" }} />
               <p className="font-semibold text-white mb-1" style={{ fontSize: 15 }}>
-                {search ? `Nessun risultato` : "Nessun veicolo"}
+                {search ? "Nessun risultato" : "Nessun veicolo"}
               </p>
               <p style={{ fontSize: 13, color: "#8e9192" }}>
                 {search ? `per "${search}"` : "Nessun veicolo nella flotta"}

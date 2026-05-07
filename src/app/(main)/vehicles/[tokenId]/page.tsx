@@ -14,6 +14,7 @@ import { formatSpeed, formatPercent } from "@/lib/utils";
 import {
   Loader2, AlertCircle, ArrowLeft, RefreshCw, Plug,
   Zap, Gauge, Droplets, Thermometer, Route, MapPin, Wrench,
+  Truck, Activity,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -92,6 +93,43 @@ function formatTimestamp(ts: string | undefined): string | undefined {
   if (isToday) return `oggi ${time}`;
   if (isYesterday) return `ieri ${time}`;
   return `${date.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" })} ${time}`;
+}
+
+// ─── circular score ───────────────────────────────────────────────────────────
+
+function CircularScore({ score, label }: { score: number; label: string }) {
+  const r = 28;
+  const circ = 2 * Math.PI * r;
+  const dash = (score / 100) * circ;
+  const color = score >= 75 ? "#4ade80" : score >= 45 ? "#f59e0b" : "#f87171";
+
+  return (
+    <div style={{ background: "#1e1f23", borderRadius: 16, padding: 16, display: "flex", alignItems: "center", gap: 14 }}>
+      <svg width="72" height="72" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="36" cy="36" r={r} fill="none" stroke="#2a2b30" strokeWidth="5" />
+        <circle
+          cx="36" cy="36" r={r} fill="none"
+          stroke={color} strokeWidth="5"
+          strokeDasharray={`${dash} ${circ - dash}`}
+          strokeLinecap="round"
+        />
+        <text
+          x="36" y="36"
+          textAnchor="middle" dominantBaseline="central"
+          fill={color} fontSize="15" fontWeight="700"
+          style={{ transform: "rotate(90deg)", transformOrigin: "36px 36px" }}
+        >
+          {score}
+        </text>
+      </svg>
+      <div>
+        <p className="font-bold text-white" style={{ fontSize: 16 }}>{label}</p>
+        <p style={{ fontSize: 11, color: "#8e9192", marginTop: 2 }}>
+          {score >= 75 ? "Ottima efficienza" : score >= 45 ? "Efficienza media" : "Efficienza bassa"}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 // ─── metric card ─────────────────────────────────────────────────────────────
@@ -258,6 +296,15 @@ export default function VehicleDetailPage() {
 
   const dtcCount = latest?.obdStatusDTCCount ?? null;
 
+  // efficiency score: 100 - penalità per scostamento da 75 km/h ottimale
+  const drivingSpeeds = speedSignals.map(s => s.speed).filter(v => v > 0);
+  const avgSpeed      = drivingSpeeds.length > 0
+    ? drivingSpeeds.reduce((a, b) => a + b, 0) / drivingSpeeds.length
+    : null;
+  const efficiencyScore = avgSpeed != null
+    ? Math.min(100, Math.max(0, Math.round(100 - Math.abs(avgSpeed - 75) * 1.2)))
+    : null;
+
   return (
     <ErrorBoundary>
     <div className="px-4 pt-6 pb-8" style={{ minHeight: "100vh" }}>
@@ -292,6 +339,35 @@ export default function VehicleDetailPage() {
             style={{ color: "#ffffff" }}
           />
         </button>
+      </div>
+
+      {/* ── Vehicle info card ──────────────────────────────────────────── */}
+      <div
+        className="flex items-center gap-4 rounded-2xl p-4 mb-5"
+        style={{ background: "#ffffff" }}
+      >
+        <div
+          className="shrink-0 flex items-center justify-center"
+          style={{ width: 56, height: 56, background: "#f3f4f6", borderRadius: 16 }}
+        >
+          <Truck className="w-7 h-7" style={{ color: "#374151" }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold leading-tight truncate" style={{ fontSize: 17, color: "#111827" }}>
+            {vehicleName}
+          </p>
+          <p className="text-sm truncate" style={{ color: "#6b7280", marginTop: 2 }}>
+            Token #{tokenId}
+          </p>
+        </div>
+        {latest && (
+          <div className="shrink-0 flex items-center gap-1.5">
+            <span
+              style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80", display: "inline-block" }}
+            />
+            <span className="text-xs font-semibold" style={{ color: "#4ade80" }}>Online</span>
+          </div>
+        )}
       </div>
 
       {/* ── Range pills ────────────────────────────────────────────────── */}
@@ -436,6 +512,36 @@ export default function VehicleDetailPage() {
                   </span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── DTC diagnostics ──────────────────────────────────────── */}
+          {dtcCount != null && dtcCount > 0 && (
+            <div
+              className="flex items-center gap-3 rounded-2xl px-4 py-3 mb-4"
+              style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.22)" }}
+            >
+              <div
+                className="flex items-center justify-center shrink-0"
+                style={{ width: 36, height: 36, background: "rgba(239,68,68,0.12)", borderRadius: 10 }}
+              >
+                <Activity className="w-5 h-5" style={{ color: "#f87171" }} />
+              </div>
+              <div>
+                <p className="font-bold text-sm" style={{ color: "#f87171" }}>
+                  {dtcCount} codice{dtcCount > 1 ? "i" : ""} DTC rilevato{dtcCount > 1 ? "i" : ""}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: "#fca5a5" }}>
+                  Portare il veicolo in officina per la diagnosi
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Efficiency score ─────────────────────────────────────── */}
+          {efficiencyScore != null && (
+            <div className="mb-4">
+              <CircularScore score={efficiencyScore} label="Efficiency Score" />
             </div>
           )}
 
