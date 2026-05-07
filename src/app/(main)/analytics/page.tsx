@@ -44,7 +44,8 @@ interface DayGroup {
 
 // ─── trip logic ───────────────────────────────────────────────────────────────
 
-const GAP_MS = 10 * 60 * 1000;
+// 2h gap = nuova sessione (dati orari: gap normale < 2h)
+const GAP_MS = 2 * 60 * 60 * 1000;
 
 function buildSessions(signals: Signal[]): TripSession[] {
   if (!signals.length) return [];
@@ -56,20 +57,48 @@ function buildSessions(signals: Signal[]): TripSession[] {
 
   for (let i = 1; i <= sorted.length; i++) {
     const isLast = i === sorted.length;
-    const gap =
+
+    // nuova sessione se gap > 2h
+    const gapBreak =
       !isLast &&
       new Date(sorted[i].timestamp).getTime() - new Date(sorted[i - 1].timestamp).getTime() > GAP_MS;
 
-    if (isLast || gap) {
+    // oppure se gli ultimi 3 punti consecutivi sono tutti a speed = 0
+    const trailingZeros =
+      !isLast &&
+      i >= 3 &&
+      [sorted[i - 3], sorted[i - 2], sorted[i - 1]].every((s) => (s.speed ?? 0) === 0);
+
+    if (isLast || gapBreak || trailingZeros) {
       const chunk = sorted.slice(start, i);
-      const hasMovement = chunk.some((s) => (s.speed ?? 0) > 1);
+      const hasMovement = chunk.some((s) => (s.speed ?? 0) > 0);
+
       if (hasMovement) {
         const t0 = new Date(chunk[0].timestamp);
         const t1 = new Date(chunk[chunk.length - 1].timestamp);
         const dur = Math.round((t1.getTime() - t0.getTime()) / 60_000);
-        const odos = chunk.map((s) => s.odometer).filter((v): v is number => v != null);
-        const km = odos.length >= 2 ? Math.max(...odos) - Math.min(...odos) : null;
-        if (dur > 1) sessions.push({ startTime: t0, endTime: t1, km, durationMin: dur });
+
+        // km = somma delle differenze odometro consecutive positive
+        let km: number | null = null;
+        for (let j = 1; j < chunk.length; j++) {
+          const prev = chunk[j - 1].odometer;
+          const curr = chunk[j].odometer;
+          if (prev != null && curr != null && curr > prev) {
+            km = (km ?? 0) + (curr - prev);
+          }
+        }
+        // fallback: stima da velocità media × durata
+        if (km == null) {
+          const speeds = chunk
+            .map((s) => s.speed)
+            .filter((v): v is number => v != null && v > 0);
+          if (speeds.length > 0) {
+            const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+            km = Math.round((avgSpeed * dur) / 60);
+          }
+        }
+
+        if (dur > 5) sessions.push({ startTime: t0, endTime: t1, km, durationMin: dur });
       }
       start = i;
     }
