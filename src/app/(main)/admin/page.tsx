@@ -48,25 +48,50 @@ function RoleBadge({ role }: { role: string }) {
 
 // ─── modal ───────────────────────────────────────────────────────────────────
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, onClose, onSubmit, loading, submitLabel, children }: {
+  title: string; onClose: () => void;
+  onSubmit: (e: React.FormEvent) => void;
+  loading: boolean; submitLabel: string;
+  children: React.ReactNode;
+}) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 z-50"
       style={{ background: "rgba(0,0,0,0.7)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div
-        className="w-full"
-        style={{ background: "#1e1f23", borderRadius: "20px 20px 0 0", padding: 24, maxWidth: 480, paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}
+      <form
+        onSubmit={onSubmit}
+        className="fixed bottom-0 w-full flex flex-col"
+        style={{ background: "#1e1f23", borderRadius: "20px 20px 0 0", maxHeight: "90vh" }}
+        onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between shrink-0" style={{ padding: "24px 24px 16px" }}>
           <h3 className="font-bold text-white" style={{ fontSize: 18 }}>{title}</h3>
-          <button onClick={onClose} style={{ color: "#8e9192" }}>
+          <button type="button" onClick={onClose} style={{ color: "#8e9192" }}>
             <X className="w-5 h-5" />
           </button>
         </div>
-        {children}
-      </div>
+        <div style={{ overflowY: "auto", padding: "0 24px", flex: 1 }}>
+          {children}
+        </div>
+        <div className="flex gap-3 shrink-0" style={{ padding: "16px 24px", paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}>
+          <button
+            type="button" onClick={onClose}
+            className="flex-1 font-bold"
+            style={{ background: "#292a2e", color: "#fff", borderRadius: 14, padding: 13, fontSize: 14 }}
+          >
+            Annulla
+          </button>
+          <button
+            type="submit" disabled={loading}
+            className="flex-1 flex items-center justify-center gap-2 font-bold disabled:opacity-50"
+            style={{ background: "#fff", color: "#000", borderRadius: 14, padding: 13, fontSize: 14 }}
+          >
+            {loading ? <><Loader2 className="w-4 h-4 animate-spin" />{submitLabel}…</> : submitLabel}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -104,18 +129,6 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   );
 }
 
-function SubmitBtn({ loading, label }: { loading: boolean; label: string }) {
-  return (
-    <button
-      type="submit"
-      disabled={loading}
-      className="flex items-center justify-center gap-2 font-bold w-full disabled:opacity-50"
-      style={{ background: "#fff", color: "#000", borderRadius: 14, padding: "13px", fontSize: 14, marginTop: 4 }}
-    >
-      {loading ? <><Loader2 className="w-4 h-4 animate-spin" />{label}…</> : label}
-    </button>
-  );
-}
 
 // ─── tab: aziende ────────────────────────────────────────────────────────────
 
@@ -195,13 +208,10 @@ function CompaniesTab() {
       </div>
 
       {modal && (
-        <Modal title="Nuova azienda" onClose={() => setModal(false)}>
-          <form onSubmit={create}>
-            <Field label="Nome azienda">
-              <Input value={name} onChange={e => setName(e.target.value)} placeholder="es. Acme Srl" required autoFocus />
-            </Field>
-            <SubmitBtn loading={saving} label="Crea azienda" />
-          </form>
+        <Modal title="Nuova azienda" onClose={() => setModal(false)} onSubmit={create} loading={saving} submitLabel="Crea azienda">
+          <Field label="Nome azienda">
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="es. Acme Srl" required autoFocus />
+          </Field>
         </Modal>
       )}
     </>
@@ -292,29 +302,26 @@ function UsersTab({ companies }: { companies: Company[] }) {
       </div>
 
       {modal && (
-        <Modal title="Nuovo utente" onClose={() => setModal(false)}>
-          <form onSubmit={create}>
-            <Field label="Email">
-              <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="nome@azienda.com" required autoFocus />
-            </Field>
-            <Field label="Password">
-              <Input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" required />
-            </Field>
-            <Field label="Ruolo">
-              <Select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                <option value="user">user</option>
-                <option value="admin">admin</option>
-                <option value="super_admin">super_admin</option>
-              </Select>
-            </Field>
-            <Field label="Azienda (opzionale)">
-              <Select value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}>
-                <option value="">— nessuna —</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
-            </Field>
-            <SubmitBtn loading={saving} label="Crea utente" />
-          </form>
+        <Modal title="Nuovo utente" onClose={() => setModal(false)} onSubmit={create} loading={saving} submitLabel="Crea utente">
+          <Field label="Email">
+            <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="nome@azienda.com" required autoFocus />
+          </Field>
+          <Field label="Password">
+            <Input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" required />
+          </Field>
+          <Field label="Ruolo">
+            <Select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+              <option value="super_admin">super_admin</option>
+            </Select>
+          </Field>
+          <Field label="Azienda (opzionale)">
+            <Select value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}>
+              <option value="">— nessuna —</option>
+              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </Field>
         </Modal>
       )}
     </>
@@ -406,31 +413,28 @@ function VehiclesTab({ companies, users }: { companies: Company[]; users: AdminU
       </div>
 
       {modal && (
-        <Modal title="Nuovo veicolo" onClose={() => setModal(false)}>
-          <form onSubmit={create}>
-            <Field label="Token ID">
-              <Input value={form.token_id} onChange={e => setForm(f => ({ ...f, token_id: e.target.value }))} placeholder="es. 12345" required autoFocus />
-            </Field>
-            <Field label="Nome (opzionale)">
-              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="es. Renault Trafic" />
-            </Field>
-            <Field label="Targa (opzionale)">
-              <Input value={form.plate} onChange={e => setForm(f => ({ ...f, plate: e.target.value }))} placeholder="es. AB123CD" />
-            </Field>
-            <Field label="Azienda (opzionale)">
-              <Select value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}>
-                <option value="">— nessuna —</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
-            </Field>
-            <Field label="Utente assegnato (opzionale)">
-              <Select value={form.user_id} onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))}>
-                <option value="">— nessuno —</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.email}</option>)}
-              </Select>
-            </Field>
-            <SubmitBtn loading={saving} label="Crea veicolo" />
-          </form>
+        <Modal title="Nuovo veicolo" onClose={() => setModal(false)} onSubmit={create} loading={saving} submitLabel="Crea veicolo">
+          <Field label="Token ID">
+            <Input value={form.token_id} onChange={e => setForm(f => ({ ...f, token_id: e.target.value }))} placeholder="es. 12345" required autoFocus />
+          </Field>
+          <Field label="Nome (opzionale)">
+            <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="es. Renault Trafic" />
+          </Field>
+          <Field label="Targa (opzionale)">
+            <Input value={form.plate} onChange={e => setForm(f => ({ ...f, plate: e.target.value }))} placeholder="es. AB123CD" />
+          </Field>
+          <Field label="Azienda (opzionale)">
+            <Select value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}>
+              <option value="">— nessuna —</option>
+              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Utente assegnato (opzionale)">
+            <Select value={form.user_id} onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))}>
+              <option value="">— nessuno —</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.email}</option>)}
+            </Select>
+          </Field>
         </Modal>
       )}
     </>

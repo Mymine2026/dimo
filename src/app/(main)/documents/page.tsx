@@ -1,10 +1,183 @@
 "use client";
 
-import { FileText, Upload } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { FileText, Upload, X, Loader2, Trash2, AlertCircle, ExternalLink } from "lucide-react";
+
+// ─── types ───────────────────────────────────────────────────────────────────
+
+interface Vehicle { id: number; token_id: string; name: string | null; plate: string | null; }
+interface Doc {
+  id: number; vehicle_id: number | null; name: string; type: string;
+  notes: string | null; file_url: string | null; created_at: string;
+  vehicle_name: string | null; vehicle_token_id: string | null;
+}
+
+// ─── doc type config ─────────────────────────────────────────────────────────
+
+const DOC_TYPES: Record<string, { label: string; bg: string; color: string }> = {
+  registration:  { label: "Libretto",      bg: "rgba(96,165,250,0.15)",  color: "#60a5fa" },
+  insurance:     { label: "Assicurazione", bg: "rgba(52,211,153,0.15)",  color: "#34d399" },
+  maintenance:   { label: "Manutenzione",  bg: "rgba(251,191,36,0.15)",  color: "#fbbf24" },
+  other:         { label: "Altro",         bg: "rgba(107,114,128,0.15)", color: "#9ca3af" },
+};
+
+function TypeBadge({ type }: { type: string }) {
+  const t = DOC_TYPES[type] ?? DOC_TYPES.other;
+  return (
+    <span
+      className="font-bold uppercase tracking-widest shrink-0"
+      style={{ fontSize: 9, padding: "2px 8px", borderRadius: 999, background: t.bg, color: t.color }}
+    >
+      {t.label}
+    </span>
+  );
+}
+
+// ─── shared UI ───────────────────────────────────────────────────────────────
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 mb-4">
+      <label className="font-semibold uppercase tracking-widest" style={{ fontSize: 10, color: "#8e9192" }}>
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function FInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      {...props}
+      className="w-full text-white text-sm outline-none"
+      style={{ background: "#292a2e", borderRadius: 12, padding: "11px 14px", caretColor: "#fff", ...props.style }}
+    />
+  );
+}
+
+function FSelect(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      {...props}
+      className="w-full text-white text-sm outline-none"
+      style={{ background: "#292a2e", borderRadius: 12, padding: "11px 14px", ...props.style }}
+    />
+  );
+}
+
+function FTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      {...props}
+      className="w-full text-white text-sm outline-none resize-none"
+      style={{ background: "#292a2e", borderRadius: 12, padding: "11px 14px", caretColor: "#fff", ...props.style }}
+    />
+  );
+}
+
+// ─── modal ───────────────────────────────────────────────────────────────────
+
+function Modal({ title, onClose, onSubmit, loading, submitLabel, children }: {
+  title: string; onClose: () => void;
+  onSubmit: (e: React.FormEvent) => void;
+  loading: boolean; submitLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50"
+      style={{ background: "rgba(0,0,0,0.7)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <form
+        onSubmit={onSubmit}
+        className="fixed bottom-0 w-full flex flex-col"
+        style={{ background: "#1e1f23", borderRadius: "20px 20px 0 0", maxHeight: "90vh" }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between shrink-0" style={{ padding: "24px 24px 16px" }}>
+          <h3 className="font-bold text-white" style={{ fontSize: 18 }}>{title}</h3>
+          <button type="button" onClick={onClose} style={{ color: "#8e9192" }}>
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div style={{ overflowY: "auto", padding: "0 24px", flex: 1 }}>
+          {children}
+        </div>
+        <div className="flex gap-3 shrink-0" style={{ padding: "16px 24px", paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}>
+          <button
+            type="button" onClick={onClose}
+            className="flex-1 font-bold"
+            style={{ background: "#292a2e", color: "#fff", borderRadius: 14, padding: 13, fontSize: 14 }}
+          >
+            Annulla
+          </button>
+          <button
+            type="submit" disabled={loading}
+            className="flex-1 flex items-center justify-center gap-2 font-bold disabled:opacity-50"
+            style={{ background: "#fff", color: "#000", borderRadius: 14, padding: 13, fontSize: 14 }}
+          >
+            {loading ? <><Loader2 className="w-4 h-4 animate-spin" />{submitLabel}…</> : submitLabel}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── page ────────────────────────────────────────────────────────────────────
+
+const EMPTY_FORM = { vehicle_id: "", name: "", type: "other", notes: "", file_url: "" };
 
 export default function DocumentsPage() {
+  const [docs,     setDocs]     = useState<Doc[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
+  const [modal,    setModal]    = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [form,     setForm]     = useState(EMPTY_FORM);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/documents");
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Errore caricamento");
+      setDocs(d.documents);
+      setVehicles(d.vehicles);
+    } catch (e) { setError(String(e)); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    const r = await fetch("/api/documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...form,
+        vehicle_id: form.vehicle_id ? Number(form.vehicle_id) : null,
+      }),
+    });
+    setSaving(false);
+    if (r.ok) { setModal(false); setForm(EMPTY_FORM); load(); }
+    else { const d = await r.json(); setError(d.error ?? "Errore salvataggio"); }
+  }
+
+  async function del(id: number) {
+    if (!confirm("Eliminare questo documento?")) return;
+    await fetch(`/api/documents?id=${id}`, { method: "DELETE" });
+    load();
+  }
+
   return (
-    <div className="px-4 pt-6" style={{ minHeight: "100vh" }}>
+    <div className="px-4 pt-6 pb-24" style={{ minHeight: "100vh" }}>
 
       {/* ── Logo row ─────────────────────────────────────────────── */}
       <div className="mb-5">
@@ -19,34 +192,116 @@ export default function DocumentsPage() {
           <p style={{ fontSize: 13, color: "#8e9192", marginTop: 4 }}>Archivio veicoli</p>
         </div>
         <button
+          onClick={() => setModal(true)}
           className="flex items-center gap-2 font-semibold"
-          style={{
-            background: "#292a2e",
-            color: "#8e9192",
-            fontSize: 13,
-            padding: "8px 14px",
-            borderRadius: 12,
-          }}
+          style={{ background: "#fff", color: "#000", fontSize: 13, padding: "8px 14px", borderRadius: 12 }}
         >
           <Upload className="w-4 h-4" />
           Carica
         </button>
       </div>
 
-      {/* ── Empty state ──────────────────────────────────────────── */}
-      <div
-        className="flex flex-col items-center justify-center py-20 rounded-2xl"
-        style={{ background: "#1e1f23" }}
-      >
-        <div
-          className="flex items-center justify-center mb-4"
-          style={{ width: 56, height: 56, background: "#292a2e", borderRadius: 16 }}
-        >
-          <FileText className="w-6 h-6" style={{ color: "#8e9192" }} />
+      {/* ── Error ────────────────────────────────────────────────── */}
+      {error && (
+        <div className="flex items-start gap-2.5 rounded-xl p-3 mb-4"
+          style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)" }}>
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#f87171" }} />
+          <span className="text-sm" style={{ color: "#fca5a5" }}>{error}</span>
         </div>
-        <p className="font-semibold text-white mb-1" style={{ fontSize: 15 }}>Nessun documento</p>
-        <p style={{ fontSize: 13, color: "#8e9192" }}>Carica il primo documento per iniziare</p>
+      )}
+
+      {/* ── Loading ──────────────────────────────────────────────── */}
+      {loading && (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#8e9192" }} />
+        </div>
+      )}
+
+      {/* ── List ─────────────────────────────────────────────────── */}
+      {!loading && docs.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 rounded-2xl" style={{ background: "#1e1f23" }}>
+          <div className="flex items-center justify-center mb-4"
+            style={{ width: 56, height: 56, background: "#292a2e", borderRadius: 16 }}>
+            <FileText className="w-6 h-6" style={{ color: "#8e9192" }} />
+          </div>
+          <p className="font-semibold text-white mb-1" style={{ fontSize: 15 }}>Nessun documento</p>
+          <p style={{ fontSize: 13, color: "#8e9192" }}>Carica il primo documento per iniziare</p>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        {docs.map((doc) => (
+          <div key={doc.id} style={{ background: "#1e1f23", borderRadius: 14, padding: "12px 14px" }}>
+            <div className="flex items-start gap-3">
+              <div className="flex items-center justify-center shrink-0"
+                style={{ width: 38, height: 38, background: "#292a2e", borderRadius: 10, marginTop: 1 }}>
+                <FileText className="w-4 h-4" style={{ color: "#8e9192" }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <TypeBadge type={doc.type} />
+                  {doc.vehicle_name || doc.vehicle_token_id
+                    ? <span style={{ fontSize: 10, color: "#8e9192" }}>
+                        {doc.vehicle_name ?? doc.vehicle_token_id}
+                      </span>
+                    : null}
+                </div>
+                <p className="font-semibold text-white truncate" style={{ fontSize: 14 }}>{doc.name}</p>
+                {doc.notes && (
+                  <p style={{ fontSize: 12, color: "#8e9192", marginTop: 2 }} className="line-clamp-2">{doc.notes}</p>
+                )}
+                <p style={{ fontSize: 11, color: "#8e9192", marginTop: 4 }}>
+                  {new Date(doc.created_at).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" })}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {doc.file_url && (
+                  <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                    className="p-1.5 rounded-lg" style={{ color: "#60a5fa" }}>
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                )}
+                <button onClick={() => del(doc.id)} className="p-1.5 rounded-lg" style={{ color: "#f87171" }}>
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
+
+      {/* ── Upload modal ─────────────────────────────────────────── */}
+      {modal && (
+        <Modal title="Carica documento" onClose={() => { setModal(false); setForm(EMPTY_FORM); }} onSubmit={submit} loading={saving} submitLabel="Salva">
+          <Field label="Veicolo (opzionale)">
+            <FSelect value={form.vehicle_id} onChange={e => setForm(f => ({ ...f, vehicle_id: e.target.value }))}>
+              <option value="">— nessuno —</option>
+              {vehicles.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.name ?? v.token_id}{v.plate ? ` · ${v.plate}` : ""}
+                </option>
+              ))}
+            </FSelect>
+          </Field>
+          <Field label="Tipo documento">
+            <FSelect value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+              <option value="registration">Libretto</option>
+              <option value="insurance">Assicurazione</option>
+              <option value="maintenance">Manutenzione</option>
+              <option value="other">Altro</option>
+            </FSelect>
+          </Field>
+          <Field label="Nome documento">
+            <FInput value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="es. Revisione 2024" required autoFocus />
+          </Field>
+          <Field label="Note (opzionale)">
+            <FTextarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Descrizione o note aggiuntive…" rows={3} />
+          </Field>
+          <Field label="URL file (opzionale)">
+            <FInput type="url" value={form.file_url} onChange={e => setForm(f => ({ ...f, file_url: e.target.value }))} placeholder="https://…" />
+          </Field>
+        </Modal>
+      )}
     </div>
   );
 }
