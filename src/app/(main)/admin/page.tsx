@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   Building2, Users, Truck, Plus, Trash2, X,
-  Loader2, AlertCircle, ChevronRight,
+  Loader2, AlertCircle, Pencil,
 } from "lucide-react";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -129,12 +129,13 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 // ─── tab: aziende ────────────────────────────────────────────────────────────
 
 function CompaniesTab() {
-  const [data,    setData]    = useState<Company[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState<string | null>(null);
-  const [modal,   setModal]   = useState(false);
-  const [name,    setName]    = useState("");
-  const [saving,  setSaving]  = useState(false);
+  const [data,       setData]       = useState<Company[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState<string | null>(null);
+  const [modal,      setModal]      = useState<"create" | "edit" | null>(null);
+  const [editTarget, setEditTarget] = useState<Company | null>(null);
+  const [name,       setName]       = useState("");
+  const [saving,     setSaving]     = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -149,6 +150,10 @@ function CompaniesTab() {
 
   useEffect(() => { load(); }, [load]);
 
+  function openCreate() { setName(""); setEditTarget(null); setModal("create"); }
+  function openEdit(c: Company) { setName(c.name); setEditTarget(c); setModal("edit"); }
+  function closeModal() { setModal(null); setEditTarget(null); setName(""); }
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -157,7 +162,20 @@ function CompaniesTab() {
       body: JSON.stringify({ name }),
     });
     setSaving(false);
-    if (r.ok) { setModal(false); setName(""); load(); }
+    if (r.ok) { closeModal(); load(); }
+    else { const d = await r.json(); setError(d.error); }
+  }
+
+  async function edit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTarget) return;
+    setSaving(true);
+    const r = await fetch(`/api/admin/companies/${editTarget.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    setSaving(false);
+    if (r.ok) { closeModal(); load(); }
     else { const d = await r.json(); setError(d.error); }
   }
 
@@ -172,7 +190,7 @@ function CompaniesTab() {
       <div className="flex items-center justify-between mb-4">
         <p style={{ fontSize: 13, color: "#8e9192" }}>{data.length} aziend{data.length === 1 ? "a" : "e"}</p>
         <button
-          onClick={() => setModal(true)}
+          onClick={openCreate}
           className="flex items-center gap-1.5 font-bold"
           style={{ background: "#fff", color: "#000", borderRadius: 12, padding: "8px 14px", fontSize: 13 }}
         >
@@ -195,6 +213,9 @@ function CompaniesTab() {
                 {c.user_count} utent{c.user_count === 1 ? "e" : "i"} · {c.vehicle_count} veicol{c.vehicle_count === 1 ? "o" : "i"}
               </p>
             </div>
+            <button onClick={() => openEdit(c)} className="shrink-0 p-1.5 rounded-lg transition-opacity active:opacity-60" style={{ color: "#8e9192" }}>
+              <Pencil className="w-4 h-4" />
+            </button>
             <button onClick={() => del(c.id)} className="shrink-0 p-1.5 rounded-lg transition-opacity active:opacity-60" style={{ color: "#f87171" }}>
               <Trash2 className="w-4 h-4" />
             </button>
@@ -203,8 +224,16 @@ function CompaniesTab() {
         {!loading && data.length === 0 && <EmptyState label="Nessuna azienda" />}
       </div>
 
-      {modal && (
-        <Modal title="Nuova azienda" onClose={() => setModal(false)} onSubmit={create} loading={saving} submitLabel="Crea azienda">
+      {modal === "create" && (
+        <Modal title="Nuova azienda" onClose={closeModal} onSubmit={create} loading={saving} submitLabel="Crea azienda">
+          <Field label="Nome azienda">
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="es. Acme Srl" required autoFocus />
+          </Field>
+        </Modal>
+      )}
+
+      {modal === "edit" && editTarget && (
+        <Modal title="Modifica azienda" onClose={closeModal} onSubmit={edit} loading={saving} submitLabel="Salva">
           <Field label="Nome azienda">
             <Input value={name} onChange={e => setName(e.target.value)} placeholder="es. Acme Srl" required autoFocus />
           </Field>
@@ -217,12 +246,18 @@ function CompaniesTab() {
 // ─── tab: utenti ─────────────────────────────────────────────────────────────
 
 function UsersTab({ companies }: { companies: Company[] }) {
-  const [data,     setData]     = useState<AdminUser[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState<string | null>(null);
-  const [modal,    setModal]    = useState(false);
-  const [saving,   setSaving]   = useState(false);
-  const [form, setForm] = useState({ email: "", password: "", role: "user", company_id: "" });
+  const [data,       setData]       = useState<AdminUser[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState<string | null>(null);
+  const [modal,      setModal]      = useState<"create" | "edit" | null>(null);
+  const [editTarget, setEditTarget] = useState<AdminUser | null>(null);
+  const [saving,     setSaving]     = useState(false);
+
+  const EMPTY_CREATE = { email: "", password: "", role: "user", company_id: "" };
+  const EMPTY_EDIT   = { email: "", role: "user", company_id: "", new_password: "" };
+
+  const [createForm, setCreateForm] = useState(EMPTY_CREATE);
+  const [editForm,   setEditForm]   = useState(EMPTY_EDIT);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -237,15 +272,44 @@ function UsersTab({ companies }: { companies: Company[] }) {
 
   useEffect(() => { load(); }, [load]);
 
+  function openCreate() { setCreateForm(EMPTY_CREATE); setEditTarget(null); setModal("create"); }
+  function openEdit(u: AdminUser) {
+    setEditTarget(u);
+    setEditForm({ email: u.email, role: u.role, company_id: u.company_id ? String(u.company_id) : "", new_password: "" });
+    setModal("edit");
+  }
+  function closeModal() { setModal(null); setEditTarget(null); }
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     const r = await fetch("/api/admin/users", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, company_id: form.company_id ? Number(form.company_id) : null }),
+      body: JSON.stringify({
+        ...createForm,
+        company_id: createForm.company_id ? Number(createForm.company_id) : null,
+      }),
     });
     setSaving(false);
-    if (r.ok) { setModal(false); setForm({ email: "", password: "", role: "user", company_id: "" }); load(); }
+    if (r.ok) { closeModal(); load(); }
+    else { const d = await r.json(); setError(d.error); }
+  }
+
+  async function edit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTarget) return;
+    setSaving(true);
+    const r = await fetch(`/api/admin/users/${editTarget.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: editForm.email,
+        role: editForm.role,
+        company_id: editForm.company_id ? Number(editForm.company_id) : null,
+        password: editForm.new_password || undefined,
+      }),
+    });
+    setSaving(false);
+    if (r.ok) { closeModal(); load(); }
     else { const d = await r.json(); setError(d.error); }
   }
 
@@ -260,7 +324,7 @@ function UsersTab({ companies }: { companies: Company[] }) {
       <div className="flex items-center justify-between mb-4">
         <p style={{ fontSize: 13, color: "#8e9192" }}>{data.length} utent{data.length === 1 ? "e" : "i"}</p>
         <button
-          onClick={() => setModal(true)}
+          onClick={openCreate}
           className="flex items-center gap-1.5 font-bold"
           style={{ background: "#fff", color: "#000", borderRadius: 12, padding: "8px 14px", fontSize: 13 }}
         >
@@ -289,6 +353,9 @@ function UsersTab({ companies }: { companies: Company[] }) {
                 {u.company_name ?? "—"} · {new Date(u.created_at).toLocaleDateString("it-IT")}
               </p>
             </div>
+            <button onClick={() => openEdit(u)} className="shrink-0 p-1.5 rounded-lg transition-opacity active:opacity-60" style={{ color: "#8e9192" }}>
+              <Pencil className="w-4 h-4" />
+            </button>
             <button onClick={() => del(u.id)} className="shrink-0 p-1.5 rounded-lg transition-opacity active:opacity-60" style={{ color: "#f87171" }}>
               <Trash2 className="w-4 h-4" />
             </button>
@@ -297,26 +364,50 @@ function UsersTab({ companies }: { companies: Company[] }) {
         {!loading && data.length === 0 && <EmptyState label="Nessun utente" />}
       </div>
 
-      {modal && (
-        <Modal title="Nuovo utente" onClose={() => setModal(false)} onSubmit={create} loading={saving} submitLabel="Crea utente">
+      {modal === "create" && (
+        <Modal title="Nuovo utente" onClose={closeModal} onSubmit={create} loading={saving} submitLabel="Crea utente">
           <Field label="Email">
-            <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="nome@azienda.com" required autoFocus />
+            <Input type="email" value={createForm.email} onChange={e => setCreateForm(f => ({ ...f, email: e.target.value }))} placeholder="nome@azienda.com" required autoFocus />
           </Field>
           <Field label="Password">
-            <Input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" required />
+            <Input type="password" value={createForm.password} onChange={e => setCreateForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" required />
           </Field>
           <Field label="Ruolo">
-            <Select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+            <Select value={createForm.role} onChange={e => setCreateForm(f => ({ ...f, role: e.target.value }))}>
               <option value="user">user</option>
               <option value="admin">admin</option>
               <option value="super_admin">super_admin</option>
             </Select>
           </Field>
           <Field label="Azienda (opzionale)">
-            <Select value={form.company_id} onChange={e => setForm(f => ({ ...f, company_id: e.target.value }))}>
+            <Select value={createForm.company_id} onChange={e => setCreateForm(f => ({ ...f, company_id: e.target.value }))}>
               <option value="">— nessuna —</option>
               {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
+          </Field>
+        </Modal>
+      )}
+
+      {modal === "edit" && editTarget && (
+        <Modal title="Modifica utente" onClose={closeModal} onSubmit={edit} loading={saving} submitLabel="Salva">
+          <Field label="Email">
+            <Input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} placeholder="nome@azienda.com" required autoFocus />
+          </Field>
+          <Field label="Ruolo">
+            <Select value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}>
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+              <option value="super_admin">super_admin</option>
+            </Select>
+          </Field>
+          <Field label="Azienda (opzionale)">
+            <Select value={editForm.company_id} onChange={e => setEditForm(f => ({ ...f, company_id: e.target.value }))}>
+              <option value="">— nessuna —</option>
+              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Nuova password (lascia vuoto per non cambiare)">
+            <Input type="password" value={editForm.new_password} onChange={e => setEditForm(f => ({ ...f, new_password: e.target.value }))} placeholder="••••••••" />
           </Field>
         </Modal>
       )}
@@ -479,7 +570,6 @@ export default function AdminPage() {
     if (status === "authenticated" && role !== "super_admin") router.push("/vehicles");
   }, [status, role, router]);
 
-  // Ensure tables exist, then load shared lists for child forms
   useEffect(() => {
     if (role !== "super_admin") return;
     fetch("/api/admin/migrate", { method: "POST" }).then(() => {

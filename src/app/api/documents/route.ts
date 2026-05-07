@@ -13,14 +13,12 @@ async function getUser() {
   };
 }
 
-export async function GET() {
-  const user = await getUser();
-  if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
+async function ensureTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS documents (
       id SERIAL PRIMARY KEY,
       vehicle_id INTEGER REFERENCES admin_vehicles(id) ON DELETE SET NULL,
+      vehicle_dimo_token TEXT,
       user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
       name VARCHAR(255) NOT NULL,
@@ -30,10 +28,30 @@ export async function GET() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='documents' AND column_name='vehicle_dimo_token'
+      ) THEN
+        ALTER TABLE documents ADD COLUMN vehicle_dimo_token TEXT;
+      END IF;
+    END $$;
+  `);
+}
+
+export async function GET() {
+  const user = await getUser();
+  if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  await ensureTable();
 
   const [docsResult, vehiclesResult] = await Promise.all([
     pool.query(`
-      SELECT d.*, v.name AS vehicle_name, v.token_id AS vehicle_token_id
+      SELECT d.*,
+        v.name AS vehicle_name,
+        v.token_id AS vehicle_token_id,
+        COALESCE(v.name, v.token_id, d.vehicle_dimo_token) AS vehicle_display
       FROM documents d
       LEFT JOIN admin_vehicles v ON v.id = d.vehicle_id
       WHERE d.user_id = $1 OR (d.company_id IS NOT NULL AND d.company_id = $2)
@@ -54,14 +72,28 @@ export async function POST(req: Request) {
   const user = await getUser();
   if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { vehicle_id, name, type, notes, file_url } = await req.json();
+  await ensureTable();
+
+  const { vehicle_id, vehicle_dimo_token, name, type, notes, file_url } = await req.json();
   if (!name?.trim()) return NextResponse.json({ error: "Nome obbligatorio" }, { status: 400 });
 
+  let resolvedVehicleId: number | null = vehicle_id ? Number(vehicle_id) : null;
+  const resolvedDimoToken: string | null = vehicle_dimo_token?.trim() || null;
+
+  if (!resolvedVehicleId && resolvedDimoToken) {
+    const { rows } = await pool.query(
+      "SELECT id FROM admin_vehicles WHERE token_id = $1 LIMIT 1",
+      [resolvedDimoToken]
+    );
+    if (rows.length > 0) resolvedVehicleId = rows[0].id;
+  }
+
   const { rows } = await pool.query(`
-    INSERT INTO documents (vehicle_id, user_id, company_id, name, type, notes, file_url)
-    VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *
+    INSERT INTO documents (vehicle_id, vehicle_dimo_token, user_id, company_id, name, type, notes, file_url)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *
   `, [
-    vehicle_id ? Number(vehicle_id) : null,
+    resolvedVehicleId,
+    resolvedDimoToken,
     user.id,
     user.company_id,
     name.trim(),
