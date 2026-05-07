@@ -86,26 +86,22 @@ function Modal({ title, onClose, onSubmit, loading, submitLabel, children }: {
 }) {
   return (
     <div
-      className="fixed inset-0 z-50"
-      style={{ background: "rgba(0,0,0,0.7)" }}
+      style={{ position: "fixed", inset: 0, zIndex: 50, backgroundColor: "rgba(0,0,0,0.8)", overflowY: "auto" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <form
         onSubmit={onSubmit}
-        className="fixed bottom-0 w-full flex flex-col"
-        style={{ background: "#1e1f23", borderRadius: "20px 20px 0 0", maxHeight: "90vh" }}
+        style={{ position: "relative", margin: "20px auto 80px", maxWidth: 600, backgroundColor: "#1e1f23", borderRadius: 16, padding: 24 }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between shrink-0" style={{ padding: "24px 24px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <h3 className="font-bold text-white" style={{ fontSize: 18 }}>{title}</h3>
           <button type="button" onClick={onClose} style={{ color: "#8e9192" }}>
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div style={{ overflowY: "auto", padding: "0 24px", flex: 1 }}>
-          {children}
-        </div>
-        <div className="flex gap-3 shrink-0" style={{ padding: "16px 24px", paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}>
+        {children}
+        <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
           <button
             type="button" onClick={onClose}
             className="flex-1 font-bold"
