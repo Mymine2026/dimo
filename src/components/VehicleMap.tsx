@@ -11,9 +11,14 @@ export interface LocationPoint {
 
 interface Props {
   locations: LocationPoint[];
+  height?: string;
 }
 
-export function VehicleMap({ locations }: Props) {
+function fmtTime(ts: string) {
+  return new Date(ts).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+}
+
+export function VehicleMap({ locations, height = "300px" }: Props) {
   const mapRef      = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<{ remove: () => void } | null>(null);
 
@@ -35,39 +40,40 @@ export function VehicleMap({ locations }: Props) {
         maxZoom: 20,
       }).addTo(map);
 
-      const latLngs: [number, number][] = locations.map(
-        (p) => [p.latitude, p.longitude]
-      );
+      const latLngs: [number, number][] = locations.map((p) => [p.latitude, p.longitude]);
 
-      // OSRM map-matching for < 25 points
+      // ── OSRM map-matching (2–100 punti) ──
       let routeDrawn = false;
-      if (locations.length >= 2 && locations.length < 25) {
+      if (locations.length >= 2 && locations.length <= 100) {
         try {
-          const coords = locations.map((p) => `${p.longitude},${p.latitude}`).join(";");
-          const radii  = locations.map(() => "50").join(";");
+          const coords  = locations.map((l) => `${l.longitude},${l.latitude}`).join(";");
+          const radii   = locations.map(() => "50").join(";");
+          const url     = `https://router.project-osrm.org/match/v1/driving/${coords}?overview=full&geometries=geojson&radiuses=${radii}`;
 
           const controller = new AbortController();
-          const tid = setTimeout(() => controller.abort(), 8000);
-
-          const res = await fetch(
-            `https://router.project-osrm.org/match/v1/driving/${coords}?overview=full&geometries=geojson&radiuses=${radii}`,
-            { signal: controller.signal }
-          );
+          const tid = setTimeout(() => controller.abort(), 10_000);
+          const res = await fetch(url, { signal: controller.signal });
           clearTimeout(tid);
 
           if (res.ok) {
             const data = await res.json();
             if (data.matchings?.length > 0) {
-              const road: [number, number][] = data.matchings
-                .flatMap((m: { geometry: { coordinates: [number, number][] } }) =>
-                  m.geometry.coordinates.map(([lon, lat]: [number, number]) => [lat, lon] as [number, number])
-                );
-              L.polyline(road, { color: "#3b82f6", weight: 3, opacity: 0.85 }).addTo(map);
+              const geojson = {
+                type: "FeatureCollection" as const,
+                features: (data.matchings as { geometry: object }[]).map((m) => ({
+                  type: "Feature" as const,
+                  geometry: m.geometry,
+                  properties: {},
+                })),
+              };
+              L.geoJSON(geojson, {
+                style: { color: "#3b82f6", weight: 3, opacity: 0.85 },
+              }).addTo(map);
               routeDrawn = true;
             }
           }
         } catch {
-          // fallback to simple polyline
+          // fallback sotto
         }
       }
 
@@ -75,25 +81,32 @@ export function VehicleMap({ locations }: Props) {
         L.polyline(latLngs, { color: "#3b82f6", weight: 3, opacity: 0.75 }).addTo(map);
       }
 
-      // Start marker — gray circle 6px
+      // ── Marker prima posizione (grigio) ──
       if (latLngs.length > 1) {
         L.marker(latLngs[0], {
           icon: L.divIcon({
-            html: `<div style="width:6px;height:6px;border-radius:50%;background:#6b7280;border:2px solid #fff"></div>`,
-            iconSize: [6, 6],
+            html: `<div style="width:10px;height:10px;border-radius:50%;background:#6b7280;border:2px solid #fff"></div>`,
+            iconSize: [10, 10],
+            iconAnchor: [5, 5],
             className: "",
           }),
-        }).addTo(map);
+        })
+          .bindPopup(`Partenza: ${fmtTime(locations[0].timestamp)}`)
+          .addTo(map);
       }
 
-      // Current position — green circle 8px
+      // ── Marker ultima posizione (verde) ──
+      const last = locations[locations.length - 1];
       L.marker(latLngs[latLngs.length - 1], {
         icon: L.divIcon({
-          html: `<div style="width:8px;height:8px;border-radius:50%;background:#22c55e;border:2px solid #fff;box-shadow:0 0 6px rgba(34,197,94,0.7)"></div>`,
-          iconSize: [8, 8],
+          html: `<div style="width:12px;height:12px;border-radius:50%;background:#22c55e;border:2px solid #fff;box-shadow:0 0 8px rgba(34,197,94,0.7)"></div>`,
+          iconSize: [12, 12],
+          iconAnchor: [6, 6],
           className: "",
         }),
-      }).addTo(map);
+      })
+        .bindPopup(`Ultima posizione: ${fmtTime(last.timestamp)}`)
+        .addTo(map);
 
       map.fitBounds(L.latLngBounds(latLngs), { padding: [24, 24] });
     });
@@ -110,10 +123,10 @@ export function VehicleMap({ locations }: Props) {
   if (locations.length === 0) {
     return (
       <div
-        className="flex items-center justify-center w-full h-full rounded-xl text-sm"
-        style={{ background: "#1e1f23", color: "#6b7280", minHeight: 200 }}
+        className="flex items-center justify-center w-full rounded-xl text-sm"
+        style={{ background: "#1e1f23", color: "#6b7280", height }}
       >
-        Nessun dato GPS
+        Nessun dato GPS disponibile
       </div>
     );
   }
@@ -121,8 +134,8 @@ export function VehicleMap({ locations }: Props) {
   return (
     <div
       ref={mapRef}
-      className="w-full h-full"
-      style={{ zIndex: 0, minHeight: 200 }}
+      className="w-full"
+      style={{ height, zIndex: 0 }}
     />
   );
 }

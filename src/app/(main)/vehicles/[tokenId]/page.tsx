@@ -253,7 +253,7 @@ export default function VehicleDetailPage() {
   const coolantSignals = signals.filter(s => s.timestamp && s.engineCoolantTemp !== undefined).map(s => ({ ...s, engineCoolantTemp: Number(s.engineCoolantTemp) || 0 }));
 
   const locations = signals
-    .filter(s => s.location?.latitude != null)
+    .filter(s => s.location?.latitude != null && s.location?.longitude != null)
     .map(s => ({ timestamp: s.timestamp, latitude: s.location!.latitude, longitude: s.location!.longitude }));
 
   const dtcCount = latest?.obdStatusDTCCount ?? null;
@@ -472,8 +472,8 @@ export default function VehicleDetailPage() {
               </div>
               <h3 className="text-sm font-semibold text-white">Percorso GPS</h3>
             </div>
-            <div style={{ height: 300, borderRadius: 12, overflow: "hidden" }}>
-              <VehicleMap locations={locations} />
+            <div style={{ borderRadius: 12, overflow: "hidden" }}>
+              <VehicleMap locations={locations} height="350px" />
             </div>
           </div>
         </>
