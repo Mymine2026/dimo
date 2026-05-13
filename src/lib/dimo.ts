@@ -61,6 +61,8 @@ export async function getDeveloperJwt(): Promise<string> {
     body: body.toString(),
   });
   const sText = await sRes.text();
+  console.log("[getDeveloperJwt] sRes.status:", sRes.status, "sRes.ok:", sRes.ok);
+  console.log("[getDeveloperJwt] sText[:500]:", sText.slice(0, 500));
   let sData: { access_token?: string; token?: string } = {};
   // DIMO API sometimes returns two concatenated JSON objects
   // Try full parse first, then extract token with regex
@@ -77,7 +79,13 @@ export async function getDeveloperJwt(): Promise<string> {
   }
   const token = sData?.access_token ?? sData?.token ?? "";
   if (!token) throw new Error(`Auth submit: no token in response (${sRes.status}): ${sText.slice(0, 200)}`);
-  return token.replace(/^"|"$/g, "");
+  const cleaned = token.replace(/^"|"$/g, "");
+  console.log("[getDeveloperJwt] token[:50]:", cleaned.slice(0, 50));
+  try {
+    const payload = JSON.parse(Buffer.from(cleaned.split(".")[1], "base64").toString());
+    console.log("[getDeveloperJwt] JWT payload sub:", payload.sub, "ethereum_address:", payload.ethereum_address);
+  } catch { /* non-fatal */ }
+  return cleaned;
 }
 
 const TOKEN_EXCHANGE_URL = "https://token-exchange-api.dimo.zone/v1/tokens/exchange";
@@ -85,6 +93,7 @@ const VEHICLE_NFT_ADDRESS = "0xbA5738a18d83D41847dfFbDC6101d37C69c9B0cF";
 
 // Exchange Developer JWT for a Vehicle JWT (direct fetch, bypasses SDK axios quirks)
 export async function getVehicleJwt(developerJwt: string, tokenId: number): Promise<string> {
+  console.log("[getVehicleJwt] developerJwt[:50]:", developerJwt.slice(0, 50));
   const res = await fetch(TOKEN_EXCHANGE_URL, {
     method: "POST",
     headers: {
