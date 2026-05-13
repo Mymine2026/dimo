@@ -245,14 +245,14 @@ export default function VehicleDetailPage() {
       if (checkConnected) {
         setNeverConnected(data.length === 0);
         if (data.length > 0 && hours !== queryHours) {
-          const r2 = await fetch(`/api/telemetry?tokenId=${tokenId}&hours=${hours}`);
+          const r2 = await fetch(`/api/telemetry?tokenId=${tokenId}&hours=${hours}&from=${new Date(Date.now() - hours * 3_600_000).toISOString()}&to=${to}`);
           const d2 = await r2.json();
-          setSignals((r2.ok ? d2 : data).slice(-100).map(normalise));
+          setSignals((r2.ok ? d2 : data).map(normalise));
         } else {
-          setSignals(data.slice(-100).map(normalise));
+          setSignals(data.map(normalise));
         }
       } else {
-        setSignals(data.slice(-100).map(normalise));
+        setSignals(data.map(normalise));
       }
     } catch (e) {
       const msg = String(e);
