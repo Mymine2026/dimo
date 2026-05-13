@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+} from "recharts";
+import {
   AlertTriangle, BarChart2, ChevronDown, Route, Wrench, X,
 } from "lucide-react";
 
@@ -47,20 +50,76 @@ interface DayGroup {
   sessions: TripSession[];
 }
 
+// ─── period ───────────────────────────────────────────────────────────────────
+
+type Period = "oggi" | "7gg" | "30gg" | "mese";
+
+const PERIODS: { label: string; value: Period }[] = [
+  { label: "Oggi",    value: "oggi" },
+  { label: "7 gg",   value: "7gg"  },
+  { label: "30 gg",  value: "30gg" },
+  { label: "Mese",   value: "mese" },
+];
+
+function getPeriodRange(period: Period): { from: Date; to: Date } {
+  const now = new Date();
+  if (period === "oggi") {
+    const from = new Date(now);
+    from.setHours(0, 0, 0, 0);
+    return { from, to: now };
+  }
+  if (period === "7gg") {
+    return { from: new Date(Date.now() - 7 * 24 * 3_600_000), to: now };
+  }
+  if (period === "30gg") {
+    return { from: new Date(Date.now() - 30 * 24 * 3_600_000), to: now };
+  }
+  // mese corrente
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { from, to: now };
+}
+
+function periodTitle(period: Period): string {
+  if (period === "oggi") return "Oggi";
+  if (period === "7gg")  return "7 giorni";
+  if (period === "30gg") return "30 giorni";
+  return "Mese corrente";
+}
+
+// Genera una barra per ogni giorno del periodo (inclusi giorni a 0 km)
+function buildChartData(period: Period, days: DayGroup[]) {
+  const { from, to } = getPeriodRange(period);
+  const dayMap = new Map(days.map(d => [d.isoDate, d.totalKm ?? 0]));
+
+  const result: { label: string; fullLabel: string; isoDate: string; km: number }[] = [];
+  const cur = new Date(from);
+  cur.setHours(0, 0, 0, 0);
+  const end = new Date(to);
+  end.setHours(0, 0, 0, 0);
+
+  while (cur <= end) {
+    const iso = cur.toISOString().slice(0, 10);
+    const weekday = cur.toLocaleDateString("it-IT", { weekday: "short" });
+    const dateStr = `${cur.getDate()}/${cur.getMonth() + 1}`;
+    result.push({
+      label:     period === "30gg" || period === "mese" ? dateStr : `${weekday} ${dateStr}`,
+      fullLabel: `${weekday} ${dateStr}`,
+      isoDate:   iso,
+      km:        dayMap.get(iso) ?? 0,
+    });
+    cur.setDate(cur.getDate() + 1);
+  }
+  return result;
+}
+
 // ─── trip logic ───────────────────────────────────────────────────────────────
 
-// 2h gap = nuova sessione (dati orari: gap normale < 2h)
-const GAP_MS = 2 * 60 * 60 * 1000;
-
-// Zero out frozen sensor readings: same non-zero speed for 2+ consecutive hours where avg==max
-// (avg==max means only one raw sample that hour — classic stale/disconnected sensor behaviour)
 function defrost(signals: Signal[]): Signal[] {
   const out = signals.map(s => ({ ...s }));
   let i = 0;
   while (i < out.length) {
     const spd = out[i].speed ?? 0;
     if (spd <= 0) { i++; continue; }
-    // find consecutive run where value is identical AND avg==max (or no max available)
     let j = i;
     while (
       j < out.length &&
@@ -75,8 +134,10 @@ function defrost(signals: Signal[]): Signal[] {
   return out;
 }
 
-function buildSessions(signals: Signal[]): TripSession[] {
+function buildSessions(signals: Signal[], intervalMs = 60 * 60 * 1000): TripSession[] {
   if (!signals.length) return [];
+  // gap threshold: at least 1.5× the bucket interval, minimum 2 h
+  const gapMs = Math.max(2 * 60 * 60 * 1000, 1.5 * intervalMs);
   const sorted = defrost(
     [...signals].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
   );
@@ -85,13 +146,9 @@ function buildSessions(signals: Signal[]): TripSession[] {
 
   for (let i = 1; i <= sorted.length; i++) {
     const isLast = i === sorted.length;
-
-    // nuova sessione se gap > 2h
     const gapBreak =
       !isLast &&
-      new Date(sorted[i].timestamp).getTime() - new Date(sorted[i - 1].timestamp).getTime() > GAP_MS;
-
-    // oppure se gli ultimi 3 punti consecutivi sono tutti a speed = 0
+      new Date(sorted[i].timestamp).getTime() - new Date(sorted[i - 1].timestamp).getTime() > gapMs;
     const trailingZeros =
       !isLast &&
       i >= 3 &&
@@ -106,8 +163,6 @@ function buildSessions(signals: Signal[]): TripSession[] {
         const t1 = new Date(chunk[chunk.length - 1].timestamp);
         const dur = Math.round((t1.getTime() - t0.getTime()) / 60_000);
 
-        // km = delta odometro (primo → ultimo non-null nella sessione)
-        // Richiede entrambi i valori; scarta se > 500 km (dato anomalo)
         let km: number | null = null;
         let kmEstimated = false;
         const firstOdo = chunk.find(s => s.odometer != null)?.odometer ?? null;
@@ -115,11 +170,8 @@ function buildSessions(signals: Signal[]): TripSession[] {
         if (firstOdo != null && lastOdo != null) {
           const delta = lastOdo - firstOdo;
           if (delta > 0 && delta <= 500) km = Math.round(delta);
-          // delta <= 0: sensore non avanzato → fallback
-          // delta > 500: anomalia → fallback
         }
 
-        // fallback: integrazione trapezioidale velocità × tempo
         if (km == null) {
           let kmEst = 0;
           for (let j = 1; j < chunk.length; j++) {
@@ -209,6 +261,24 @@ function SectionTitle({ icon: Icon, color, title }: { icon: React.ElementType; c
   );
 }
 
+// ─── tooltip personalizzato ───────────────────────────────────────────────────
+
+function KmTooltip({ active, payload }: { active?: boolean; payload?: { payload: { fullLabel: string; km: number } }[] }) {
+  if (!active || !payload?.length) return null;
+  const { fullLabel, km } = payload[0].payload;
+  return (
+    <div
+      style={{
+        background: "#1e1f23", border: "1px solid #2a2b30", borderRadius: 10,
+        padding: "8px 12px", fontSize: 12,
+      }}
+    >
+      <p className="font-bold text-white">{km} km</p>
+      <p style={{ color: "#8e9192", marginTop: 2 }}>{fullLabel}</p>
+    </div>
+  );
+}
+
 // ─── modal ────────────────────────────────────────────────────────────────────
 
 interface ModalField { label: string; key: string; type: "text" | "number" | "date"; placeholder?: string }
@@ -276,22 +346,23 @@ function FormModal({
 type ModalType = "tagliando" | "gomme" | null;
 
 export default function AnalyticsPage() {
-  const [vehicles, setVehicles]       = useState<VehicleItem[]>([]);
-  const [selectedId, setSelectedId]   = useState<number | null>(null);
+  const [vehicles, setVehicles]         = useState<VehicleItem[]>([]);
+  const [selectedId, setSelectedId]     = useState<number | null>(null);
   const [showVehicles, setShowVehicles] = useState(false);
+  const [period, setPeriod]             = useState<Period>("7gg");
 
-  const [adBlue, setAdBlue]           = useState<number | null>(null);
-  const [odometer, setOdometer]       = useState<number | null>(null);
+  const [adBlue, setAdBlue]             = useState<number | null>(null);
+  const [odometer, setOdometer]         = useState<number | null>(null);
 
-  const [maintenance, setMaintenance] = useState<MaintenanceRecord[]>([]);
-  const [sessions, setSessions]       = useState<TripSession[]>([]);
+  const [maintenance, setMaintenance]   = useState<MaintenanceRecord[]>([]);
+  const [sessions, setSessions]         = useState<TripSession[]>([]);
 
-  const [loadingMain, setLoadingMain] = useState(false);
+  const [loadingMain, setLoadingMain]   = useState(false);
   const [loadingTrips, setLoadingTrips] = useState(false);
 
-  const [modal, setModal]             = useState<ModalType>(null);
-  const [geoLabels, setGeoLabels]     = useState<Map<string, string>>(new Map());
-  const geocodeCacheRef               = useRef(new Map<string, string>());
+  const [modal, setModal]               = useState<ModalType>(null);
+  const [geoLabels, setGeoLabels]       = useState<Map<string, string>>(new Map());
+  const geocodeCacheRef                 = useRef(new Map<string, string>());
 
   // ── load vehicles ──
   useEffect(() => {
@@ -306,46 +377,47 @@ export default function AnalyticsPage() {
       .catch(() => {});
   }, []);
 
-  // ── load data when vehicle changes ──
-  const loadData = useCallback(async (tokenId: number) => {
+  // ── load data when vehicle or period changes ──
+  const loadData = useCallback(async (tokenId: number, p: Period) => {
     setAdBlue(null); setOdometer(null); setMaintenance([]); setSessions([]); setGeoLabels(new Map());
     setLoadingMain(true); setLoadingTrips(true);
 
-    // latest (adBlue + odometer)
     fetch(`/api/latest?tokenId=${tokenId}`)
       .then((r) => r.json())
       .then((d) => {
         setAdBlue(d.powertrainCombustionEngineDieselExhaustFluidLevel ?? null);
         setOdometer(d.powertrainTransmissionTravelledDistance ?? null);
       })
-      .catch(() => {})
-      .finally(() => {});
+      .catch(() => {});
 
-    // maintenance
     fetch(`/api/maintenance?tokenId=${tokenId}`)
       .then((r) => r.json())
       .then((d: MaintenanceRecord[]) => Array.isArray(d) ? setMaintenance(d) : null)
       .catch(() => {})
       .finally(() => setLoadingMain(false));
 
-    // telemetry 7d for trips
-    const from = new Date(Date.now() - 7 * 24 * 3_600_000).toISOString();
-    const to   = new Date().toISOString();
-    fetch(`/api/telemetry?tokenId=${tokenId}&hours=168&from=${from}&to=${to}`)
+    const { from, to } = getPeriodRange(p);
+    // For 30d/mese use 3h buckets (240 pts vs 720) so the DIMO API doesn't time out;
+    // gapMs inside buildSessions adapts to the interval automatically.
+    const intervalStr = p === "oggi" ? "10m" : p === "7gg" ? "1h" : "3h";
+    const intervalMs  = p === "oggi" ? 10 * 60_000 : p === "7gg" ? 60 * 60_000 : 3 * 60 * 60_000;
+    const fromStr     = from.toISOString();
+    const toStr       = to.toISOString();
+
+    fetch(`/api/telemetry?tokenId=${tokenId}&from=${fromStr}&to=${toStr}&interval=${intervalStr}&slim=1`)
       .then((r) => r.json())
-      .then((d: Signal[]) => Array.isArray(d) ? setSessions(buildSessions(d)) : null)
+      .then((d: Signal[]) => Array.isArray(d) ? setSessions(buildSessions(d, intervalMs)) : null)
       .catch(() => {})
       .finally(() => setLoadingTrips(false));
   }, []);
 
   useEffect(() => {
-    if (selectedId != null) loadData(selectedId);
-  }, [selectedId, loadData]);
+    if (selectedId != null) loadData(selectedId, period);
+  }, [selectedId, period, loadData]);
 
   // ── geocode start/end coords for each session ──
   useEffect(() => {
     if (!sessions.length) return;
-    // Collect unique coords not yet in cache
     const toFetch: { key: string; lat: number; lon: number }[] = [];
     const fromCache = new Map<string, string>();
     for (const s of sessions) {
@@ -364,7 +436,7 @@ export default function AnalyticsPage() {
     (async () => {
       for (let i = 0; i < unique.length; i++) {
         if (cancelled) break;
-        if (i > 0) await new Promise(r => setTimeout(r, 1200)); // Nominatim: max 1 req/s
+        if (i > 0) await new Promise(r => setTimeout(r, 1200));
         if (cancelled) break;
         const { key, lat, lon } = unique[i];
         try {
@@ -413,6 +485,15 @@ export default function AnalyticsPage() {
   const days = groupByDay(sessions);
   const selectedVehicle = vehicles.find((v) => v.tokenId === selectedId);
 
+  // ── stats ──
+  const totalKm    = sessions.reduce((s, t) => s + (t.km ?? 0), 0);
+  const activeDays = days.filter(d => d.totalKm != null && d.totalKm > 0).length;
+  const avgKmDay   = activeDays > 0 ? Math.round(totalKm / activeDays) : 0;
+
+  // ── chart data ──
+  const chartData = buildChartData(period, days);
+  const hasChartData = chartData.some(d => d.km > 0);
+
   // ── save helpers ──
   async function saveMaintenance(values: Record<string, string>, type: string) {
     await fetch("/api/maintenance", {
@@ -427,7 +508,7 @@ export default function AnalyticsPage() {
         notes: values.notes || null,
       }),
     });
-    if (selectedId) loadData(selectedId);
+    if (selectedId) loadData(selectedId, period);
   }
 
   // ── render ──
@@ -443,7 +524,7 @@ export default function AnalyticsPage() {
 
       {/* ── Vehicle picker ── */}
       {vehicles.length > 0 && (
-        <div className="relative mb-5">
+        <div className="relative mb-4">
           <button
             onClick={() => setShowVehicles((v) => !v)}
             className="flex items-center justify-between w-full rounded-2xl px-4 py-3"
@@ -485,57 +566,86 @@ export default function AnalyticsPage() {
         </p>
       ) : (
         <>
-          {/* ── Stats row ── */}
-          {!loadingTrips && (() => {
-            const totalKm   = sessions.reduce((s, t) => s + (t.km ?? 0), 0);
-            const activeDays = days.filter(d => d.totalKm != null && d.totalKm > 0).length;
-            const avgKmDay  = activeDays > 0 ? Math.round(totalKm / activeDays) : 0;
-            return (
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {[
-                  { label: "Km (7gg)", value: Math.round(totalKm).toLocaleString(), color: "#3b82f6" },
-                  { label: "Sessioni", value: sessions.length,                       color: "#8b5cf6" },
-                  { label: "Km/giorno", value: avgKmDay.toLocaleString(),            color: "#4ade80" },
-                ].map(({ label, value, color }) => (
-                  <div key={label} className="flex flex-col items-center rounded-2xl py-3" style={{ background: "#1e1f23" }}>
-                    <span className="font-bold leading-none" style={{ fontSize: 20, color }}>{value}</span>
-                    <span className="font-semibold tracking-wider uppercase mt-1" style={{ fontSize: 9, color: "#8e9192" }}>{label}</span>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+          {/* ── Period selector ── */}
+          <div className="flex gap-2 mb-4">
+            {PERIODS.map((p) => {
+              const active = p.value === period;
+              return (
+                <button
+                  key={p.value}
+                  onClick={() => setPeriod(p.value)}
+                  className="flex-1 text-xs font-semibold py-2 rounded-full transition-colors"
+                  style={{
+                    background: active ? "#3b82f6" : "#1e1f23",
+                    color:      active ? "#ffffff" : "#8e9192",
+                  }}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
 
-          {/* ── Km giornalieri bar chart ── */}
-          {!loadingTrips && days.length > 0 && (() => {
-            const maxKm = Math.max(...days.map(d => d.totalKm ?? 0), 1);
-            return (
-              <Card style={{ marginBottom: 12 }}>
-                <SectionTitle icon={BarChart2} color="#3b82f6" title="Km giornalieri (7gg)" />
-                <div className="flex items-end gap-1.5" style={{ height: 80 }}>
-                  {days.slice().reverse().map((d) => {
-                    const km  = d.totalKm ?? 0;
-                    const pct = Math.max(4, Math.round((km / maxKm) * 100));
-                    return (
-                      <div key={d.isoDate} className="flex flex-col items-center gap-1" style={{ flex: 1 }}>
-                        <div
-                          style={{
-                            width: "100%", height: `${pct}%`,
-                            background: km > 0 ? "#3b82f6" : "#2a2b30",
-                            borderRadius: "4px 4px 2px 2px",
-                            minHeight: 4,
-                          }}
-                        />
-                        <span style={{ fontSize: 8, color: "#8e9192", textAlign: "center" }}>
-                          {new Date(d.isoDate).toLocaleDateString("it-IT", { weekday: "short" }).slice(0, 2)}
-                        </span>
-                      </div>
-                    );
-                  })}
+          {/* ── Stats row ── */}
+          {!loadingTrips && (
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {[
+                { label: "Km totali",  value: Math.round(totalKm).toLocaleString(), color: "#3b82f6" },
+                { label: "Sessioni",   value: sessions.length,                       color: "#8b5cf6" },
+                { label: "Km/giorno",  value: avgKmDay.toLocaleString(),             color: "#4ade80" },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="flex flex-col items-center rounded-2xl py-3" style={{ background: "#1e1f23" }}>
+                  <span className="font-bold leading-none" style={{ fontSize: 20, color }}>{value}</span>
+                  <span className="font-semibold tracking-wider uppercase mt-1" style={{ fontSize: 9, color: "#8e9192" }}>{label}</span>
                 </div>
-              </Card>
-            );
-          })()}
+              ))}
+            </div>
+          )}
+
+          {/* ── Km giornalieri BarChart ── */}
+          <Card style={{ marginBottom: 12 }}>
+            <SectionTitle icon={BarChart2} color="#3b82f6" title={`Km giornalieri · ${periodTitle(period)}`} />
+
+            {loadingTrips ? (
+              <div style={{ height: 200 }} className="flex items-center justify-center">
+                <p className="text-xs" style={{ color: "#8e9192" }}>Caricamento…</p>
+              </div>
+            ) : !hasChartData ? (
+              <div style={{ height: 200 }} className="flex items-center justify-center">
+                <p className="text-xs" style={{ color: "#8e9192" }}>Nessun dato disponibile per questo periodo</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={chartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor="#3b82f6" stopOpacity={1} />
+                      <stop offset="100%" stopColor="#1d4ed8" stopOpacity={1} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 9, fill: "#8e9192" }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={period === "30gg" || period === "mese" ? 4 : 0}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: "#8e9192" }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v: number) => `${v}km`}
+                  />
+                  <Tooltip content={<KmTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+                  <Bar dataKey="km" radius={[4, 4, 2, 2]}>
+                    {chartData.map((entry, i) => (
+                      <Cell key={i} fill={entry.km > 0 ? "url(#barGrad)" : "#2a2b30"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
 
           {/* ── AdBlue banner ── */}
           {adBlue != null && adBlue < 25 && (
@@ -566,11 +676,7 @@ export default function AnalyticsPage() {
               <p className="text-xs py-4 text-center" style={{ color: "#8e9192" }}>Caricamento…</p>
             ) : (
               <>
-                {/* Prossimo tagliando */}
-                <div
-                  className="rounded-xl p-3 mb-3"
-                  style={{ background: "#14151a" }}
-                >
+                <div className="rounded-xl p-3 mb-3" style={{ background: "#14151a" }}>
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-white">Prossimo tagliando</p>
                     <button
@@ -609,7 +715,6 @@ export default function AnalyticsPage() {
                   )}
                 </div>
 
-                {/* Cambio gomme */}
                 <div className="rounded-xl p-3" style={{ background: "#14151a" }}>
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-white">Cambio gomme</p>
@@ -642,7 +747,7 @@ export default function AnalyticsPage() {
 
           {/* ── Viaggi ── */}
           <Card>
-            <SectionTitle icon={Route} color="#3b82f6" title="Viaggi ultimi 7 giorni" />
+            <SectionTitle icon={Route} color="#3b82f6" title={`Viaggi · ${periodTitle(period)}`} />
 
             {loadingTrips ? (
               <p className="text-xs py-4 text-center" style={{ color: "#8e9192" }}>Caricamento…</p>
@@ -653,7 +758,6 @@ export default function AnalyticsPage() {
             ) : (
               days.map((day) => (
                 <div key={day.isoDate} className="mb-5 last:mb-0">
-                  {/* Day header */}
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#8e9192" }}>
                       {day.label}
@@ -665,7 +769,6 @@ export default function AnalyticsPage() {
                     )}
                   </div>
 
-                  {/* Sessions */}
                   <div className="flex flex-col gap-2">
                     {day.sessions.map((s, i) => {
                       const sk = s.startCoords ? geoKey(s.startCoords) : null;
@@ -675,13 +778,11 @@ export default function AnalyticsPage() {
                       return (
                         <div key={i} className="rounded-xl p-3" style={{ background: "#14151a" }}>
                           <div className="flex gap-2.5">
-                            {/* Timeline */}
                             <div className="flex flex-col items-center shrink-0" style={{ paddingTop: 3 }}>
                               <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#22c55e", border: "2px solid rgba(255,255,255,0.8)", display: "block", flexShrink: 0 }} />
                               <span style={{ width: 2, flex: 1, background: "#374151", display: "block", margin: "3px 0", minHeight: 16 }} />
                               <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#ef4444", border: "2px solid rgba(255,255,255,0.8)", display: "block", flexShrink: 0 }} />
                             </div>
-                            {/* Addresses + times */}
                             <div className="flex-1 min-w-0 flex flex-col justify-between" style={{ gap: 10 }}>
                               <div className="flex items-baseline justify-between gap-2">
                                 <span className="text-xs font-medium text-white truncate">
@@ -696,7 +797,6 @@ export default function AnalyticsPage() {
                                 <span className="text-xs shrink-0" style={{ color: "#6b7280" }}>{fmtTime(s.endTime)}</span>
                               </div>
                             </div>
-                            {/* Stats */}
                             <div className="flex flex-col items-end justify-center shrink-0 ml-1" style={{ gap: 2 }}>
                               {s.km != null && (
                                 <span
