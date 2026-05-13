@@ -16,6 +16,8 @@ const LATEST_QUERY = `
       exteriorAirTemperature { timestamp value }
       isIgnitionOn { timestamp value }
       obdStatusDTCCount { timestamp value }
+      powertrainFuelSystemAccumulatedConsumption { timestamp value }
+      powertrainCombustionEngineTorquePercent { timestamp value }
       currentLocationCoordinates { timestamp value { latitude longitude } }
     }
   }

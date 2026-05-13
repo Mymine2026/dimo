@@ -14,7 +14,7 @@ import { formatSpeed, formatPercent } from "@/lib/utils";
 import {
   Loader2, AlertCircle, ArrowLeft, RefreshCw, Plug,
   Zap, Gauge, Droplets, Thermometer, Route, MapPin, Wrench,
-  Truck, Activity,
+  Truck, Activity, BarChart2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -274,21 +274,24 @@ export default function VehicleDetailPage() {
   const lastSignal  = signals.at(-1);
   const lastUpdated = formatTimestamp(lastSignal?.timestamp);
 
-  const speed    = extractNum(latest?.speed)                                             ?? lastSignal?.speed;
-  const fuel     = extractNum(latest?.powertrainFuelSystemRelativeLevel)                 ?? lastSignal?.fuelLevel;
-  const rpm      = extractNum(latest?.powertrainCombustionEngineSpeed)                   ?? lastSignal?.engineRpm;
-  const coolant  = extractNum(latest?.powertrainCombustionEngineECT)                     ?? lastSignal?.engineCoolantTemp;
-  const adBlue   = extractNum(latest?.powertrainCombustionEngineDieselExhaustFluidLevel) ?? lastSignal?.adBlue;
-  const voltage  = extractNum(latest?.lowVoltageBatteryCurrentVoltage)                   ?? lastSignal?.batteryVoltage;
-  const odometer = extractNum(latest?.powertrainTransmissionTravelledDistance)           ?? lastSignal?.odometer;
-  const extTemp  = extractNum(latest?.exteriorAirTemperature)                            ?? lastSignal?.exteriorTemp;
-  const ignition = extractNum(latest?.isIgnitionOn)                                      ?? lastSignal?.isIgnitionOn;
+  const speed               = extractNum(latest?.speed)                                             ?? lastSignal?.speed;
+  const fuel                = extractNum(latest?.powertrainFuelSystemRelativeLevel)                 ?? lastSignal?.fuelLevel;
+  const rpm                 = extractNum(latest?.powertrainCombustionEngineSpeed)                   ?? lastSignal?.engineRpm;
+  const coolant             = extractNum(latest?.powertrainCombustionEngineECT)                     ?? lastSignal?.engineCoolantTemp;
+  const adBlue              = extractNum(latest?.powertrainCombustionEngineDieselExhaustFluidLevel) ?? lastSignal?.adBlue;
+  const voltage             = extractNum(latest?.lowVoltageBatteryCurrentVoltage)                   ?? lastSignal?.batteryVoltage;
+  const odometer            = extractNum(latest?.powertrainTransmissionTravelledDistance)           ?? lastSignal?.odometer;
+  const extTemp             = extractNum(latest?.exteriorAirTemperature)                            ?? lastSignal?.exteriorTemp;
+  const ignition            = extractNum(latest?.isIgnitionOn)                                      ?? lastSignal?.isIgnitionOn;
+  const torquePercent       = extractNum(latest?.powertrainCombustionEngineTorquePercent)           ?? lastSignal?.torquePercent;
+  const accumulatedFuel     = extractNum(latest?.powertrainFuelSystemAccumulatedConsumption)        ?? lastSignal?.accumulatedConsumption;
   const engineOn = ignition == null || Number(ignition) !== 0;
 
-  const speedSignals   = signals.filter(s => s.timestamp && s.speed    !== undefined).map(s => ({ ...s, speed:             Number(s.speed)             || 0 }));
-  const fuelSignals    = signals.filter(s => s.timestamp && s.fuelLevel !== undefined).map(s => ({ ...s, fuelLevel:         Number(s.fuelLevel)         || 0 }));
-  const rpmSignals     = signals.filter(s => s.timestamp && s.engineRpm !== undefined).map(s => ({ ...s, engineRpm:         Number(s.engineRpm)         || 0 }));
-  const coolantSignals = signals.filter(s => s.timestamp && s.engineCoolantTemp !== undefined).map(s => ({ ...s, engineCoolantTemp: Number(s.engineCoolantTemp) || 0 }));
+  const speedSignals    = signals.filter(s => s.timestamp && s.speed    !== undefined).map(s => ({ ...s, speed:             Number(s.speed)             || 0 }));
+  const fuelSignals     = signals.filter(s => s.timestamp && s.fuelLevel !== undefined).map(s => ({ ...s, fuelLevel:         Number(s.fuelLevel)         || 0 }));
+  const rpmSignals      = signals.filter(s => s.timestamp && s.engineRpm !== undefined).map(s => ({ ...s, engineRpm:         Number(s.engineRpm)         || 0 }));
+  const coolantSignals  = signals.filter(s => s.timestamp && s.engineCoolantTemp !== undefined).map(s => ({ ...s, engineCoolantTemp: Number(s.engineCoolantTemp) || 0 }));
+  const torqueSignals   = signals.filter(s => s.timestamp && s.torquePercent != null).map(s => ({ ...s, torquePercent: Number(s.torquePercent) }));
 
   const locations = signals
     .filter(s => s.location?.latitude != null && s.location?.longitude != null)
@@ -466,6 +469,20 @@ export default function VehicleDetailPage() {
               value={voltage != null ? `${voltage.toFixed(1)}V` : "—"}
               subtitle={lastUpdated}
             />
+            {torquePercent != null && (
+              <MetricCard
+                label="Coppia motore"
+                value={`${Math.round(torquePercent)}%`}
+                subtitle={lastUpdated}
+              />
+            )}
+            {accumulatedFuel != null && (
+              <MetricCard
+                label="Consumo totale"
+                value={`${Math.round(accumulatedFuel).toLocaleString()} L`}
+                subtitle={lastUpdated}
+              />
+            )}
           </div>
 
           {/* ── Status strip ─────────────────────────────────────────── */}
@@ -564,6 +581,11 @@ export default function VehicleDetailPage() {
               <ChartPanel icon={Thermometer} iconColor="#ef4444" title="Liquido raffreddamento (°C)">
                 <SignalChart signals={coolantSignals} field="engineCoolantTemp" label="Coolant" color="#ef4444" unit="°C"   range={range} />
               </ChartPanel>
+              {torqueSignals.length > 0 && (
+                <ChartPanel icon={BarChart2} iconColor="#f97316" title="Coppia motore (%)">
+                  <SignalChart signals={torqueSignals} field="torquePercent" label="Torque" color="#f97316" unit="%" range={range} />
+                </ChartPanel>
+              )}
             </>
           )}
 

@@ -27,18 +27,20 @@ export interface Vehicle {
 export interface TelemetrySignal {
   timestamp: string;
   speed: number | null;
-  fuelLevel: number | null;           // 0-100 %
-  fuelAbsolute: number | null;        // litres
-  range: number | null;               // metres
+  fuelLevel: number | null;              // 0-100 %
+  fuelAbsolute: number | null;           // litres
+  range: number | null;                  // metres
   location: { latitude: number; longitude: number } | null;
   engineRpm: number | null;
-  engineCoolantTemp: number | null;   // °C
-  throttle: number | null;            // %
-  adBlue: number | null;              // %
-  batteryVoltage: number | null;      // V
-  odometer: number | null;            // km
-  exteriorTemp: number | null;        // °C
-  isIgnitionOn: number | null;        // 0/1
+  engineCoolantTemp: number | null;      // °C
+  throttle: number | null;               // %
+  adBlue: number | null;                 // %
+  batteryVoltage: number | null;         // V
+  odometer: number | null;               // km
+  exteriorTemp: number | null;           // °C
+  isIgnitionOn: number | null;           // 0/1
+  torquePercent: number | null;          // % (-125..+125), J1939 only
+  accumulatedConsumption: number | null; // litres total, J1939 only
 }
 
 export interface LatestStatus {
@@ -46,10 +48,12 @@ export interface LatestStatus {
   speed?: number | null;
   powertrainFuelSystemRelativeLevel?: number | null;
   powertrainFuelSystemAbsoluteLevel?: number | null;
+  powertrainFuelSystemAccumulatedConsumption?: number | null;
   powertrainCombustionEngineSpeed?: number | null;
   powertrainCombustionEngineECT?: number | null;
   powertrainCombustionEngineDieselExhaustFluidLevel?: number | null;
   powertrainCombustionEngineTPS?: number | null;
+  powertrainCombustionEngineTorquePercent?: number | null;
   powertrainTransmissionTravelledDistance?: number | null;
   lowVoltageBatteryCurrentVoltage?: number | null;
   exteriorAirTemperature?: number | null;

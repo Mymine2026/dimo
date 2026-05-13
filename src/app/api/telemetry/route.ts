@@ -28,6 +28,8 @@ const TELEMETRY_QUERY = `
       odometer: powertrainTransmissionTravelledDistance(agg: LAST)
       exteriorTemp: exteriorAirTemperature(agg: AVG)
       isIgnitionOn(agg: LAST)
+      torquePercent: powertrainCombustionEngineTorquePercent(agg: AVG)
+      accumulatedConsumption: powertrainFuelSystemAccumulatedConsumption(agg: LAST)
     }
   }
 `;
