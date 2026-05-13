@@ -32,6 +32,7 @@ interface TripSession {
   startTime: Date;
   endTime: Date;
   km: number | null;
+  kmEstimated: boolean;
   durationMin: number;
 }
 
@@ -80,6 +81,7 @@ function buildSessions(signals: Signal[]): TripSession[] {
 
         // km = somma delle differenze odometro consecutive positive
         let km: number | null = null;
+        let kmEstimated = false;
         for (let j = 1; j < chunk.length; j++) {
           const prev = chunk[j - 1].odometer;
           const curr = chunk[j].odometer;
@@ -87,7 +89,7 @@ function buildSessions(signals: Signal[]): TripSession[] {
             km = (km ?? 0) + (curr - prev);
           }
         }
-        // fallback: stima da velocità media × durata
+        // fallback: stima da velocità media × durata (meno affidabile)
         if (km == null) {
           const speeds = chunk
             .map((s) => s.speed)
@@ -95,10 +97,11 @@ function buildSessions(signals: Signal[]): TripSession[] {
           if (speeds.length > 0) {
             const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
             km = Math.round((avgSpeed * dur) / 60);
+            kmEstimated = true;
           }
         }
 
-        if (dur > 5) sessions.push({ startTime: t0, endTime: t1, km, durationMin: dur });
+        if (dur > 5) sessions.push({ startTime: t0, endTime: t1, km, kmEstimated, durationMin: dur });
       }
       start = i;
     }
@@ -587,8 +590,12 @@ export default function AnalyticsPage() {
                         </div>
                         <div className="flex items-center gap-3">
                           {s.km != null && (
-                            <span className="text-xs font-semibold text-white">
-                              {Math.round(s.km).toLocaleString()} km
+                            <span
+                              className="text-xs font-semibold"
+                              style={{ color: s.kmEstimated ? "#8e9192" : "#ffffff" }}
+                              title={s.kmEstimated ? "Stima basata su velocità media (odometro non disponibile)" : undefined}
+                            >
+                              {s.kmEstimated ? "~" : ""}{Math.round(s.km).toLocaleString()} km
                             </span>
                           )}
                           <span className="text-xs" style={{ color: "#8e9192" }}>

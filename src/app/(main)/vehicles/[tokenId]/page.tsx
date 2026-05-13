@@ -299,11 +299,18 @@ export default function VehicleDetailPage() {
   const accumulatedFuel     = extractNum(latest?.powertrainFuelSystemAccumulatedConsumption)        ?? lastSignal?.accumulatedConsumption;
   const engineOn = ignition == null || Number(ignition) !== 0;
 
-  const speedSignals    = signals.filter(s => s.timestamp && s.speed    !== undefined).map(s => ({ ...s, speed:             Number(s.speed)             || 0 }));
-  const fuelSignals     = signals.filter(s => s.timestamp && s.fuelLevel !== undefined).map(s => ({ ...s, fuelLevel:         Number(s.fuelLevel)         || 0 }));
-  const rpmSignals      = signals.filter(s => s.timestamp && s.engineRpm !== undefined).map(s => ({ ...s, engineRpm:         Number(s.engineRpm)         || 0 }));
-  const coolantSignals  = signals.filter(s => s.timestamp && s.engineCoolantTemp !== undefined).map(s => ({ ...s, engineCoolantTemp: Number(s.engineCoolantTemp) || 0 }));
-  const torqueSignals   = signals.filter(s => s.timestamp && s.torquePercent != null).map(s => ({ ...s, torquePercent: Number(s.torquePercent) }));
+  // Fuel consumption delta for selected period (accumulated consumption last - first non-null)
+  const fuelWithAcc = signals.filter(s => s.accumulatedConsumption != null);
+  const periodFuelDelta = fuelWithAcc.length >= 2
+    ? Math.round(fuelWithAcc.at(-1)!.accumulatedConsumption! - fuelWithAcc[0]!.accumulatedConsumption!)
+    : null;
+
+  // Pass signals as-is — SpeedChart renders null values as gaps (connectNulls=false)
+  const speedSignals    = signals;
+  const fuelSignals     = signals;
+  const rpmSignals      = signals;
+  const coolantSignals  = signals;
+  const torqueSignals   = signals.filter(s => s.torquePercent != null);
 
   const locations = signals
     .filter(s => s.location?.latitude != null && s.location?.longitude != null)
@@ -313,7 +320,7 @@ export default function VehicleDetailPage() {
 
   // Punteggio di guida: basato sulla velocità media in marcia (solo campioni > 5 km/h).
   // Ottimale per veicoli commerciali: 70-85 km/h. Min 5 campioni per mostrare il dato.
-  const movingSpeeds  = speedSignals.map(s => s.speed).filter(v => v > 5);
+  const movingSpeeds  = signals.map(s => s.speed).filter((v): v is number => v != null && v > 5);
   const avgSpeed      = movingSpeeds.length >= 5
     ? movingSpeeds.reduce((a, b) => a + b, 0) / movingSpeeds.length
     : null;
@@ -507,6 +514,13 @@ export default function VehicleDetailPage() {
                 value={`${Math.round(accumulatedFuel).toLocaleString()} L`}
                 info="Totale dall'inizio del monitoraggio"
                 subtitle="Non varia col periodo selezionato"
+              />
+            )}
+            {periodFuelDelta != null && periodFuelDelta > 0 && (
+              <MetricCard
+                label="Consumo nel periodo"
+                value={`${periodFuelDelta.toLocaleString()} L`}
+                info={`Variazione nel periodo selezionato (${range})`}
               />
             )}
           </div>

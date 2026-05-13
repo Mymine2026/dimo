@@ -16,17 +16,15 @@ interface Props {
 }
 
 export function SignalChart({ signals, field, label, color, unit, range = "24h", transform }: Props) {
-  const data = signals
-    .filter((s) => s[field] != null)
-    .map((s) => ({
+  // Keep null values so Recharts shows gaps instead of drawing to 0
+  const safeData = signals.map((s) => {
+    const raw = s[field];
+    const v = raw != null ? (transform ? transform(raw as number) : (raw as number)) : null;
+    return {
       time: s.timestamp,
-      value: transform ? transform(s[field] as number) : (s[field] as number),
-    }));
-
-  const safeData = (data || []).map(point => ({
-    ...point,
-    value: typeof point.value === 'number' ? point.value : (parseFloat(String(point.value)) || 0),
-  }));
+      value: v != null && isFinite(v) ? v : null,
+    };
+  });
 
   const formatTick = (timestamp: string | number) => {
     const date = new Date(String(timestamp));
@@ -60,7 +58,7 @@ export function SignalChart({ signals, field, label, color, unit, range = "24h",
           labelStyle={{ color: "#a1a1aa" }}
           formatter={(v) => [`${Math.round(Number(v))} ${unit}`, label]}
         />
-        <Area type="monotone" dataKey="value" stroke={color} fill={`url(#grad-${field as string})`} strokeWidth={2} dot={false} />
+        <Area type="monotone" dataKey="value" stroke={color} fill={`url(#grad-${field as string})`} strokeWidth={2} dot={false} connectNulls={false} />
       </AreaChart>
     </ResponsiveContainer>
   );

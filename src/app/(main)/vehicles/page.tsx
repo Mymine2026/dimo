@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Vehicle } from "@/types/dimo";
-import { Loader2, AlertCircle, Search, Truck, Wifi, Cpu } from "lucide-react";
+import { Loader2, AlertCircle, Search, Truck, Wifi, Cpu, AlertTriangle } from "lucide-react";
 
 type VehicleStatus = "ACTIVE" | "IN SERVICE" | "NO SIGNAL";
+
+interface VehicleAlerts {
+  adBlue: number | null;
+  dtcCount: number | null;
+}
 
 function computeHealth(v: Vehicle): number {
   let score = 20;
@@ -59,7 +64,7 @@ function StatPill({
 
 // ─── vehicle card ─────────────────────────────────────────────────────────────
 
-function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
+function VehicleCard({ vehicle, alerts }: { vehicle: Vehicle; alerts?: VehicleAlerts }) {
   const status = computeStatus(vehicle);
   const health = computeHealth(vehicle);
   const cfg    = STATUS_CONFIG[status];
@@ -114,6 +119,31 @@ function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
                 <Cpu className="w-2.5 h-2.5" /> SYNTHETIC
               </span>
             )}
+            {alerts?.adBlue != null && alerts.adBlue < 25 && (
+              <span
+                className="flex items-center gap-1 font-semibold"
+                style={{
+                  fontSize: 9, padding: "2px 7px", borderRadius: 6,
+                  background: alerts.adBlue < 10 ? "rgba(239,68,68,0.15)" : "rgba(251,191,36,0.15)",
+                  color: alerts.adBlue < 10 ? "#f87171" : "#fcd34d",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                <AlertTriangle className="w-2.5 h-2.5" /> AdBlue {Math.round(alerts.adBlue)}%
+              </span>
+            )}
+            {alerts?.dtcCount != null && alerts.dtcCount > 0 && (
+              <span
+                className="flex items-center gap-1 font-semibold"
+                style={{
+                  fontSize: 9, padding: "2px 7px", borderRadius: 6,
+                  background: "rgba(239,68,68,0.15)", color: "#f87171",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                <AlertTriangle className="w-2.5 h-2.5" /> {alerts.dtcCount} DTC
+              </span>
+            )}
           </div>
         </div>
 
@@ -147,10 +177,12 @@ function VehicleCard({ vehicle }: { vehicle: Vehicle }) {
 export default function VehiclesPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState<string | null>(null);
-  const [search,   setSearch]   = useState("");
+  const [vehicles,   setVehicles]   = useState<Vehicle[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState<string | null>(null);
+  const [search,     setSearch]     = useState("");
+  const [latestMap,  setLatestMap]  = useState<Map<number, VehicleAlerts>>(new Map());
+  const alertsFetched = useRef(false);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -158,7 +190,30 @@ export default function VehiclesPage() {
       .then((res) => res.json().then((data: unknown) => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
         if (!ok) throw new Error((data as { error?: string }).error ?? "Errore caricamento");
-        setVehicles(data as Vehicle[]);
+        const vs = data as Vehicle[];
+        setVehicles(vs);
+        // Fetch alerts for all vehicles in parallel (fire-and-forget)
+        if (!alertsFetched.current) {
+          alertsFetched.current = true;
+          Promise.all(
+            vs.map(v =>
+              fetch(`/api/latest?tokenId=${v.tokenId}`)
+                .then(r => r.json())
+                .then((d: Record<string, unknown>) => ({
+                  tokenId: v.tokenId,
+                  adBlue: (d.powertrainCombustionEngineDieselExhaustFluidLevel as number | null) ?? null,
+                  dtcCount: (d.obdStatusDTCCount as number | null) ?? null,
+                }))
+                .catch(() => null)
+            )
+          ).then(results => {
+            const m = new Map<number, VehicleAlerts>();
+            for (const r of results) {
+              if (r) m.set(r.tokenId, { adBlue: r.adBlue, dtcCount: r.dtcCount });
+            }
+            setLatestMap(m);
+          });
+        }
       })
       .catch((e: unknown) => setError(String(e)))
       .finally(() => setLoading(false));
@@ -251,7 +306,7 @@ export default function VehiclesPage() {
       {/* ── Vehicle list ── */}
       {!loading && !error && (
         <>
-          {filtered.map((v) => <VehicleCard key={v.tokenId} vehicle={v} />)}
+          {filtered.map((v) => <VehicleCard key={v.tokenId} vehicle={v} alerts={latestMap.get(v.tokenId)} />)}
           {filtered.length === 0 && (
             <div
               className="flex flex-col items-center justify-center py-16 rounded-2xl"
