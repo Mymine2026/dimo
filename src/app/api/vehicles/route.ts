@@ -30,17 +30,59 @@ const VEHICLES_QUERY = `
   }
 `;
 
+type DimoVehicle = {
+  tokenId: number;
+  tokenDID?: string;
+  owner?: string;
+  mintedAt?: string;
+  definition?: { make: string; model: string; year: number } | null;
+  syntheticDevice?: { tokenId: number; address: string } | null;
+  aftermarketDevice?: { tokenId: number; address: string } | null;
+  _source?: "dimo" | "db";
+};
+
+type DbVehicleRow = {
+  token_id: string;
+  name: string;
+  plate: string;
+  company_id: number | null;
+};
+
 const OWNER_ADDRESSES = [
   process.env.DIMO_WALLET_ADDRESS,
   process.env.DIMO_WALLET_ADDRESS_2,
 ].filter(Boolean) as string[];
 
-async function fetchVehiclesForOwner(owner: string) {
-  const data = await queryIdentity<{ vehicles: { nodes: unknown[] } }>(
+async function fetchVehiclesForOwner(owner: string): Promise<DimoVehicle[]> {
+  const data = await queryIdentity<{ vehicles: { nodes: DimoVehicle[] } }>(
     VEHICLES_QUERY,
     { owner }
   );
   return data.vehicles.nodes;
+}
+
+function mergeVehicles(dimoVehicles: DimoVehicle[], dbRows: DbVehicleRow[]): DimoVehicle[] {
+  const byTokenId = new Map<number, DimoVehicle>();
+
+  for (const v of dimoVehicles) {
+    byTokenId.set(Number(v.tokenId), { ...v, _source: "dimo" });
+  }
+
+  for (const row of dbRows) {
+    const tokenId = Number(row.token_id);
+    if (!byTokenId.has(tokenId)) {
+      // Vehicle exists in DB but not in DIMO — expose it with DB metadata only
+      byTokenId.set(tokenId, {
+        tokenId,
+        definition: row.name
+          ? { make: row.name, model: "", year: 0 }
+          : null,
+        _source: "db",
+      });
+    }
+  }
+
+  return Array.from(byTokenId.values());
 }
 
 export async function GET(req: Request) {
@@ -55,45 +97,45 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const singleOwner = searchParams.get("owner");
 
-  let allVehicles: unknown[];
+  let dimoVehicles: DimoVehicle[];
   try {
     if (singleOwner) {
-      allVehicles = await fetchVehiclesForOwner(singleOwner);
+      dimoVehicles = await fetchVehiclesForOwner(singleOwner);
     } else {
       const results = await Promise.all(OWNER_ADDRESSES.map(fetchVehiclesForOwner));
-      allVehicles = results.flat();
+      dimoVehicles = results.flat();
     }
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 
   if (role === "super_admin") {
-    return NextResponse.json(allVehicles);
+    const { rows: allDbRows } = await pool.query<DbVehicleRow>(
+      "SELECT token_id, name, plate, company_id FROM vehicles"
+    );
+    return NextResponse.json(mergeVehicles(dimoVehicles, allDbRows));
   }
 
-  let allowedTokenIds: Set<number>;
+  let dbRows: DbVehicleRow[];
 
   if (role === "admin" && companyId) {
-    const { rows } = await pool.query(
-      "SELECT token_id FROM vehicles WHERE company_id = $1",
+    const { rows } = await pool.query<DbVehicleRow>(
+      "SELECT token_id, name, plate, company_id FROM vehicles WHERE company_id = $1",
       [companyId]
     );
-    allowedTokenIds = new Set(rows.map((r) => Number(r.token_id)));
+    dbRows = rows;
   } else {
     if (!userId) return NextResponse.json([]);
-    const { rows } = await pool.query(
-      `SELECT v.token_id FROM vehicles v
+    const { rows } = await pool.query<DbVehicleRow>(
+      `SELECT v.token_id, v.name, v.plate, v.company_id FROM vehicles v
        JOIN vehicle_users vu ON vu.vehicle_id = v.id
        WHERE vu.user_id = $1`,
       [userId]
     );
-    allowedTokenIds = new Set(rows.map((r) => Number(r.token_id)));
+    dbRows = rows;
   }
 
-  const filtered = allVehicles.filter((v) => {
-    const tokenId = Number((v as { tokenId: number }).tokenId);
-    return allowedTokenIds.has(tokenId);
-  });
-
-  return NextResponse.json(filtered);
+  const allowedTokenIds = new Set(dbRows.map((r) => Number(r.token_id)));
+  const filteredDimo = dimoVehicles.filter((v) => allowedTokenIds.has(Number(v.tokenId)));
+  return NextResponse.json(mergeVehicles(filteredDimo, dbRows));
 }
