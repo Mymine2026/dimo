@@ -89,16 +89,16 @@ function buildSessions(signals: Signal[]): TripSession[] {
             km = (km ?? 0) + (curr - prev);
           }
         }
-        // fallback: stima da velocità media × durata (meno affidabile)
+        // fallback: integrazione trapezioidale velocità × tempo (più accurata di avgSpeed × dur)
         if (km == null) {
-          const speeds = chunk
-            .map((s) => s.speed)
-            .filter((v): v is number => v != null && v > 0);
-          if (speeds.length > 0) {
-            const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
-            km = Math.round((avgSpeed * dur) / 60);
-            kmEstimated = true;
+          let kmEst = 0;
+          for (let j = 1; j < chunk.length; j++) {
+            const v0 = chunk[j - 1].speed ?? 0;
+            const v1 = chunk[j].speed ?? 0;
+            const dtMin = (new Date(chunk[j].timestamp).getTime() - new Date(chunk[j - 1].timestamp).getTime()) / 60_000;
+            kmEst += ((v0 + v1) / 2) * (dtMin / 60);
           }
+          if (kmEst > 0) { km = Math.round(kmEst); kmEstimated = true; }
         }
 
         if (dur > 5) sessions.push({ startTime: t0, endTime: t1, km, kmEstimated, durationMin: dur });

@@ -46,7 +46,7 @@ export async function GET(req: Request) {
   const fromDate = new Date(from);
   const toDate   = new Date(to);
   const diffHours = (toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60);
-  const interval = intervalForHours(diffHours);
+  const interval = searchParams.get("interval") ?? intervalForHours(diffHours);
 
   try {
     const devJwt     = await getDeveloperJwt();

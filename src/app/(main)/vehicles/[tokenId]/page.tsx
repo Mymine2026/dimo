@@ -205,6 +205,7 @@ export default function VehicleDetailPage() {
   const [range,          setRange]          = useState<Range>("30d");
   const [neverConnected, setNeverConnected] = useState(false);
   const [vehicleName,    setVehicleName]    = useState<string>(`Veicolo #${tokenId}`);
+  const [monitoringStart, setMonitoringStart] = useState<string | null>(null);
   const firstLoad = useRef(true);
 
   async function loadVehicleName() {
@@ -269,10 +270,24 @@ export default function VehicleDetailPage() {
     } catch { /* non-critical */ }
   }
 
+  async function loadMonitoringStart() {
+    try {
+      const from = "2024-01-01T00:00:00Z";
+      const to   = new Date().toISOString();
+      const res  = await fetch(`/api/telemetry?tokenId=${tokenId}&from=${from}&to=${to}&interval=720h`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        const first = (data as TelemetrySignal[]).find(s => s.accumulatedConsumption != null);
+        if (first) setMonitoringStart(first.timestamp);
+      }
+    } catch { /* non-critical */ }
+  }
+
   useEffect(() => {
     loadVehicleName();
     loadTelemetry(true);
     loadLatest();
+    loadMonitoringStart();
     firstLoad.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tokenId]);
@@ -305,11 +320,11 @@ export default function VehicleDetailPage() {
     ? Math.round(fuelWithAcc.at(-1)!.accumulatedConsumption! - fuelWithAcc[0]!.accumulatedConsumption!)
     : null;
 
-  // Pass signals as-is — SpeedChart renders null values as gaps (connectNulls=false)
-  const speedSignals    = signals;
-  const fuelSignals     = signals;
-  const rpmSignals      = signals;
-  const coolantSignals  = signals;
+  // Filter each chart to its non-null data points — avoids gaps from unsampled intervals
+  const speedSignals    = signals;                                         // speed always present (0 when parked)
+  const fuelSignals     = signals.filter(s => s.fuelLevel != null);
+  const rpmSignals      = signals.filter(s => s.engineRpm != null);
+  const coolantSignals  = signals.filter(s => s.engineCoolantTemp != null);
   const torqueSignals   = signals.filter(s => s.torquePercent != null);
 
   const locations = signals
@@ -512,8 +527,10 @@ export default function VehicleDetailPage() {
               <MetricCard
                 label="Carburante totale"
                 value={`${Math.round(accumulatedFuel).toLocaleString()} L`}
-                info="Totale dall'inizio del monitoraggio"
-                subtitle="Non varia col periodo selezionato"
+                info={monitoringStart
+                  ? `Dal ${new Date(monitoringStart).toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" })}`
+                  : "Dall'inizio del monitoraggio"}
+                subtitle="Contatore totale · non varia col periodo"
               />
             )}
             {periodFuelDelta != null && periodFuelDelta > 0 && (
@@ -569,6 +586,35 @@ export default function VehicleDetailPage() {
                   </span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── AdBlue alert ─────────────────────────────────────────── */}
+          {adBlue != null && adBlue < 25 && (
+            <div
+              className="flex items-center gap-3 rounded-2xl px-4 py-3 mb-4"
+              style={{
+                background: adBlue < 10 ? "rgba(239,68,68,0.08)" : "rgba(251,191,36,0.08)",
+                border: `1px solid ${adBlue < 10 ? "rgba(239,68,68,0.22)" : "rgba(251,191,36,0.22)"}`,
+              }}
+            >
+              <div
+                className="flex items-center justify-center shrink-0"
+                style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  background: adBlue < 10 ? "rgba(239,68,68,0.12)" : "rgba(251,191,36,0.12)",
+                }}
+              >
+                <Droplets className="w-5 h-5" style={{ color: adBlue < 10 ? "#f87171" : "#fbbf24" }} />
+              </div>
+              <div>
+                <p className="font-bold text-sm" style={{ color: adBlue < 10 ? "#f87171" : "#fcd34d" }}>
+                  AdBlue al {Math.round(adBlue)}%{adBlue < 10 ? " — Rifornire urgentemente" : " — Livello basso"}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: adBlue < 10 ? "#fca5a5" : "#fde68a" }}>
+                  Rifornire per evitare limitazioni del motore
+                </p>
+              </div>
             </div>
           )}
 
