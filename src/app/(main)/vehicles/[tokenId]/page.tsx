@@ -690,7 +690,11 @@ export default function VehicleDetailPage() {
               <h3 className="text-sm font-semibold text-white">Percorso GPS</h3>
             </div>
             <div style={{ borderRadius: 12, overflow: "hidden" }}>
-              <VehicleMap locations={locations} height="350px" />
+              <VehicleMap
+                allLocations={locations}
+                recentLocations={locations.filter(s => new Date(s.timestamp).getTime() >= Date.now() - 24 * 3600 * 1000)}
+                height="350px"
+              />
             </div>
           </div>
         </>
