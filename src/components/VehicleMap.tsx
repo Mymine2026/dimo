@@ -42,26 +42,10 @@ export function VehicleMap({ locations, height = "300px" }: Props) {
       mapInstance.current = map;
 
       // ── Tile layer ────────────────────────────────────────────────────────
-      const mapTilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY;
-      if (mapTilerKey) {
-        L.tileLayer(
-          `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${mapTilerKey}`,
-          {
-            attribution: '© <a href="https://www.maptiler.com" target="_blank">MapTiler</a> © <a href="https://www.openstreetmap.org" target="_blank">OpenStreetMap</a>',
-            maxZoom: 20,
-          }
-        ).addTo(map);
-      } else {
-        // Stadia Maps — free, no API key, retina-aware
-        L.tileLayer(
-          "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png",
-          {
-            attribution: '© <a href="https://stadiamaps.com/" target="_blank">Stadia Maps</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
-            maxZoom: 20,
-            detectRetina: true,
-          }
-        ).addTo(map);
-      }
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }).addTo(map);
 
       const latLngs: [number, number][] = locations.map((p) => [p.latitude, p.longitude]);
 
