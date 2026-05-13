@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { TelemetrySignal, LatestStatus } from "@/types/dimo";
 import { SignalChart } from "@/components/SpeedChart";
+import type { LocationPoint } from "@/components/VehicleMap";
 import dynamic from "next/dynamic";
 const VehicleMap = dynamic(
   () => import("@/components/VehicleMap").then((m) => ({ default: m.VehicleMap })),
@@ -30,6 +31,14 @@ const RANGES: { label: string; value: Range; hours: number }[] = [
   { label: "30d", value: "30d", hours: 720 },
   { label: "90d", value: "90d", hours: 2160 },
 ];
+
+// Fine-grained GPS track config (for route view) — capped at 7d max to avoid timeouts
+const GPS_TRACK: Record<Range, { hours: number; interval: string }> = {
+  "24h": { hours: 24,  interval: "15m" },
+  "7d":  { hours: 168, interval: "1h"  },
+  "30d": { hours: 168, interval: "1h"  },
+  "90d": { hours: 168, interval: "2h"  },
+};
 
 // ─── error boundary ──────────────────────────────────────────────────────────
 
@@ -206,6 +215,7 @@ export default function VehicleDetailPage() {
   const [neverConnected, setNeverConnected] = useState(false);
   const [vehicleName,    setVehicleName]    = useState<string>(`Veicolo #${tokenId}`);
   const [monitoringStart, setMonitoringStart] = useState<string | null>(null);
+  const [gpsTrack,        setGpsTrack]        = useState<LocationPoint[]>([]);
   const firstLoad = useRef(true);
 
   async function loadVehicleName() {
@@ -262,6 +272,22 @@ export default function VehicleDetailPage() {
     }
   }
 
+  async function loadGpsTrack() {
+    const { hours, interval } = GPS_TRACK[range];
+    const from = new Date(Date.now() - hours * 3_600_000).toISOString();
+    const to   = new Date().toISOString();
+    try {
+      const res  = await fetch(`/api/telemetry?tokenId=${tokenId}&slim=1&from=${from}&to=${to}&interval=${interval}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        const pts: LocationPoint[] = (data as TelemetrySignal[])
+          .filter(s => s.location?.latitude != null && s.location?.longitude != null)
+          .map(s => ({ timestamp: s.timestamp, latitude: s.location!.latitude, longitude: s.location!.longitude }));
+        setGpsTrack(pts);
+      }
+    } catch { /* non-critical */ }
+  }
+
   async function loadLatest() {
     try {
       const res  = await fetch(`/api/latest?tokenId=${tokenId}`);
@@ -288,6 +314,7 @@ export default function VehicleDetailPage() {
     loadTelemetry(true);
     loadLatest();
     loadMonitoringStart();
+    loadGpsTrack();
     firstLoad.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tokenId]);
@@ -295,6 +322,7 @@ export default function VehicleDetailPage() {
   useEffect(() => {
     if (firstLoad.current) return;
     loadTelemetry(false);
+    loadGpsTrack();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range]);
 
@@ -692,7 +720,7 @@ export default function VehicleDetailPage() {
             <div style={{ borderRadius: 12, overflow: "hidden" }}>
               <VehicleMap
                 allLocations={locations}
-                recentLocations={locations.filter(s => new Date(s.timestamp).getTime() >= Date.now() - 24 * 3600 * 1000)}
+                recentLocations={gpsTrack}
                 height="350px"
               />
             </div>

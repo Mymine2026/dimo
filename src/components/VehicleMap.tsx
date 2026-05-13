@@ -11,6 +11,23 @@ export interface LocationPoint {
 
 type MapMode = "heatmap" | "route";
 
+function segmentTrips(pts: LocationPoint[], maxGapMinutes = 60): LocationPoint[][] {
+  if (pts.length === 0) return [];
+  const trips: LocationPoint[][] = [];
+  let current: LocationPoint[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const gap = (new Date(pts[i].timestamp).getTime() - new Date(pts[i - 1].timestamp).getTime()) / 60_000;
+    if (gap > maxGapMinutes) {
+      if (current.length >= 2) trips.push(current);
+      current = [pts[i]];
+    } else {
+      current.push(pts[i]);
+    }
+  }
+  if (current.length >= 2) trips.push(current);
+  return trips;
+}
+
 interface Props {
   /** All GPS points for the heatmap (full range) */
   allLocations: LocationPoint[];
@@ -37,11 +54,6 @@ function fmtTime(ts: string) {
   return new Date(ts).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
 }
 
-function samplePoints(pts: LocationPoint[], max: number): LocationPoint[] {
-  if (pts.length <= max) return pts;
-  const step = (pts.length - 1) / (max - 1);
-  return Array.from({ length: max }, (_, i) => pts[Math.round(i * step)]);
-}
 
 export function VehicleMap({ allLocations, recentLocations, height = "300px" }: Props) {
   const [mode, setMode] = useState<MapMode>("heatmap");
@@ -109,51 +121,17 @@ export function VehicleMap({ allLocations, recentLocations, height = "300px" }: 
       );
       heatRef.current = heat;
 
-      // ── Route layer (OSRM + fallback) ──
-      const routeLatLngs: [number, number][] = routePts.map(p => [p.latitude, p.longitude]);
-      let routeDrawn = false;
-
-      if (routePts.length >= 2) {
-        try {
-          const sampled = samplePoints(routePts, 50);
-          const coords  = sampled.map(l => `${l.longitude},${l.latitude}`).join(";");
-          const radii   = sampled.map(() => "50").join(";");
-          const url = `https://router.project-osrm.org/match/v1/driving/${coords}?overview=full&geometries=geojson&radiuses=${radii}`;
-
-          const controller = new AbortController();
-          const tid = setTimeout(() => controller.abort(), 5_000);
-          let res: Response;
-          try { res = await fetch(url, { signal: controller.signal }); }
-          finally { clearTimeout(tid); }
-
-          if (!isMounted) return;
-
-          if (res!.ok) {
-            const data = await res!.json();
-            if (data.matchings?.length > 0) {
-              const geojson = {
-                type: "FeatureCollection" as const,
-                features: (data.matchings as { geometry: object }[]).map(m => ({
-                  type: "Feature" as const, geometry: m.geometry, properties: {},
-                })),
-              };
-              routeRef.current = L.geoJSON(geojson, { style: { color: "#f97316", weight: 5, opacity: 0.9 } });
-              routeDrawn = true;
-            } else {
-              console.warn("[VehicleMap] OSRM:", data.code, data.message);
-            }
-          } else {
-            console.warn(`[VehicleMap] OSRM HTTP ${res!.status}`);
-          }
-        } catch (err) {
-          console.warn("[VehicleMap] OSRM:", err instanceof Error ? err.message : err);
+      // ── Route layer: one polyline per trip segment ──
+      const trips = segmentTrips(routePts, 60);
+      if (trips.length > 0) {
+        const group = L.layerGroup();
+        for (const trip of trips) {
+          L.polyline(
+            trip.map(p => [p.latitude, p.longitude] as [number, number]),
+            { color: "#f97316", weight: 3, opacity: 0.85 }
+          ).addTo(group);
         }
-      }
-
-      if (!routeDrawn && routeLatLngs.length > 1) {
-        routeRef.current = L.polyline(routeLatLngs, {
-          color: "#f59e0b", weight: 2, opacity: 0.75, dashArray: "6 5",
-        });
+        routeRef.current = group;
       }
 
       if (!isMounted) return;
