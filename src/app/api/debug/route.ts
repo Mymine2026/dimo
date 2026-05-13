@@ -17,18 +17,19 @@ const DISCOVERY_QUERY = `
       speed { timestamp value }
       powertrainFuelSystemRelativeLevel { timestamp value }
       powertrainFuelSystemAbsoluteLevel { timestamp value }
-      powertrainFuelSystemInstantConsumption { timestamp value }
+      powertrainFuelSystemAccumulatedConsumption { timestamp value }
+      powertrainFuelSystemSupportedFuelTypes { timestamp value }
       powertrainRange { timestamp value }
       powertrainCombustionEngineSpeed { timestamp value }
       powertrainCombustionEngineECT { timestamp value }
       powertrainCombustionEngineTPS { timestamp value }
-      powertrainCombustionEngineEngineLoad { timestamp value }
-      powertrainCombustionEngineEngineHours { timestamp value }
-      powertrainCombustionEngineOilPressure { timestamp value }
-      powertrainCombustionEngineOilTemperature { timestamp value }
-      powertrainCombustionEngineDieselExhaustFluidLevel { timestamp value }
-      powertrainCombustionEngineDieselParticulateFilterSootLoad { timestamp value }
+      powertrainCombustionEngineEOP { timestamp value }
+      powertrainCombustionEngineEOT { timestamp value }
       powertrainCombustionEngineTorque { timestamp value }
+      powertrainCombustionEngineTorquePercent { timestamp value }
+      powertrainCombustionEngineEngineOilLevel { timestamp value }
+      powertrainCombustionEngineDieselExhaustFluidLevel { timestamp value }
+      powertrainCombustionEngineDieselExhaustFluidCapacity { timestamp value }
       powertrainTransmissionTravelledDistance { timestamp value }
       powertrainTransmissionCurrentGear { timestamp value }
       lowVoltageBatteryCurrentVoltage { timestamp value }
