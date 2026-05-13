@@ -24,8 +24,36 @@ async function ethSign(message: string, privateKeyHex: string): Promise<string> 
   return "0x" + r + s + v;
 }
 
+let _cachedDevJwt: string | null = null;
+let _cachedDevJwtExp = 0;
+let _devJwtInflight: Promise<string> | null = null;
+
+function _jwtExp(token: string): number {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
+    return typeof payload.exp === "number" ? payload.exp : 0;
+  } catch { return 0; }
+}
+
+function _jwtEthAddress(token: string): string | undefined {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
+    return payload.ethereum_address;
+  } catch { return undefined; }
+}
+
 // Obtain a Developer JWT using Client ID + API Key directly (no SDK, bypasses axios quirks).
 export async function getDeveloperJwt(): Promise<string> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  // Return cached token if still valid for >5 minutes
+  if (_cachedDevJwt && _cachedDevJwtExp - nowSec > 300) return _cachedDevJwt;
+  // Deduplicate concurrent calls — only one auth flow runs at a time
+  if (_devJwtInflight) return _devJwtInflight;
+  _devJwtInflight = _fetchDeveloperJwt().finally(() => { _devJwtInflight = null; });
+  return _devJwtInflight;
+}
+
+async function _fetchDeveloperJwt(): Promise<string> {
   // Step 1: generate challenge
   const challengeUrl = new URL(`${AUTH_BASE}/auth/web3/generate_challenge`);
   challengeUrl.searchParams.set("client_id", CLIENT_ID);
@@ -61,15 +89,13 @@ export async function getDeveloperJwt(): Promise<string> {
     body: body.toString(),
   });
   const sText = await sRes.text();
-  console.log("[getDeveloperJwt] sRes.status:", sRes.status, "sRes.ok:", sRes.ok);
-  console.log("[getDeveloperJwt] sText[:500]:", sText.slice(0, 500));
+  if (!sRes.ok) throw new Error(`Auth submit failed (${sRes.status}): ${sText.slice(0, 200)}`);
   let sData: { access_token?: string; token?: string } = {};
   // DIMO API sometimes returns two concatenated JSON objects
   // Try full parse first, then extract token with regex
   try {
     sData = JSON.parse(sText);
   } catch {
-    // Try to extract access_token from concatenated JSON response
     const tokenMatch = sText.match(/"access_token"\s*:\s*"([^"]+)"/);
     if (tokenMatch) {
       sData = { access_token: tokenMatch[1] };
@@ -80,11 +106,11 @@ export async function getDeveloperJwt(): Promise<string> {
   const token = sData?.access_token ?? sData?.token ?? "";
   if (!token) throw new Error(`Auth submit: no token in response (${sRes.status}): ${sText.slice(0, 200)}`);
   const cleaned = token.replace(/^"|"$/g, "");
-  console.log("[getDeveloperJwt] token[:50]:", cleaned.slice(0, 50));
-  try {
-    const payload = JSON.parse(Buffer.from(cleaned.split(".")[1], "base64").toString());
-    console.log("[getDeveloperJwt] JWT payload sub:", payload.sub, "ethereum_address:", payload.ethereum_address);
-  } catch { /* non-fatal */ }
+  if (!_jwtEthAddress(cleaned)) {
+    throw new Error("Auth submit: JWT missing ethereum_address — check DIMO_CLIENT_ID and DIMO_API_KEY");
+  }
+  _cachedDevJwt = cleaned;
+  _cachedDevJwtExp = _jwtExp(cleaned);
   return cleaned;
 }
 
@@ -93,7 +119,6 @@ const VEHICLE_NFT_ADDRESS = "0xbA5738a18d83D41847dfFbDC6101d37C69c9B0cF";
 
 // Exchange Developer JWT for a Vehicle JWT (direct fetch, bypasses SDK axios quirks)
 export async function getVehicleJwt(developerJwt: string, tokenId: number): Promise<string> {
-  console.log("[getVehicleJwt] developerJwt[:50]:", developerJwt.slice(0, 50));
   const res = await fetch(TOKEN_EXCHANGE_URL, {
     method: "POST",
     headers: {
