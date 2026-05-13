@@ -11,36 +11,74 @@ function decodeJwtPayload(token: string) {
   }
 }
 
+const DISCOVERY_QUERY = `
+  query DiscoverSignals($tokenId: Int!) {
+    signalsLatest(tokenId: $tokenId) {
+      speed { timestamp value }
+      powertrainFuelSystemRelativeLevel { timestamp value }
+      powertrainFuelSystemAbsoluteLevel { timestamp value }
+      powertrainFuelSystemInstantConsumption { timestamp value }
+      powertrainRange { timestamp value }
+      powertrainCombustionEngineSpeed { timestamp value }
+      powertrainCombustionEngineECT { timestamp value }
+      powertrainCombustionEngineTPS { timestamp value }
+      powertrainCombustionEngineEngineLoad { timestamp value }
+      powertrainCombustionEngineEngineHours { timestamp value }
+      powertrainCombustionEngineOilPressure { timestamp value }
+      powertrainCombustionEngineOilTemperature { timestamp value }
+      powertrainCombustionEngineDieselExhaustFluidLevel { timestamp value }
+      powertrainCombustionEngineDieselParticulateFilterSootLoad { timestamp value }
+      powertrainCombustionEngineTorque { timestamp value }
+      powertrainTransmissionTravelledDistance { timestamp value }
+      powertrainTransmissionCurrentGear { timestamp value }
+      lowVoltageBatteryCurrentVoltage { timestamp value }
+      exteriorAirTemperature { timestamp value }
+      isIgnitionOn { timestamp value }
+      obdStatusDTCCount { timestamp value }
+      obdBarometricPressure { timestamp value }
+      obdIntakeTemp { timestamp value }
+      currentLocationCoordinates { timestamp value { latitude longitude } }
+      chassisAxleRow1WheelLeftTirePressure { timestamp value }
+      chassisAxleRow1WheelRightTirePressure { timestamp value }
+    }
+  }
+`;
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const tokenId = parseInt(searchParams.get("tokenId") ?? "189019");
 
   try {
     const devJwt = await getDeveloperJwt();
-    const devPayload = decodeJwtPayload(devJwt);
-
     const vehicleJwt = await getVehicleJwt(devJwt, tokenId);
-    const vehiclePayload = decodeJwtPayload(vehicleJwt ?? "");
 
-    // Try a minimal telemetry query
-    const minimalQuery = `query { signals(tokenId: ${tokenId}, interval: "1h", from: "2026-01-01T00:00:00Z", to: "2026-04-28T23:59:59Z") { timestamp speed(agg: LAST) } }`;
     const res = await fetch(`${TELEMETRY_API}/query`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${vehicleJwt}`,
       },
-      body: JSON.stringify({ query: minimalQuery }),
+      body: JSON.stringify({ query: DISCOVERY_QUERY, variables: { tokenId } }),
     });
-    const telemetryRaw = await res.json();
+    const raw = await res.json();
 
-    return NextResponse.json({
-      devJwtPayload: devPayload,
-      vehicleJwt: vehicleJwt ? `${vehicleJwt.slice(0, 40)}...` : null,
-      vehicleJwtPayload: vehiclePayload,
-      telemetryStatus: res.status,
-      telemetryResult: telemetryRaw,
-    });
+    if (!res.ok || raw.errors) {
+      return NextResponse.json({ error: raw.errors ?? raw }, { status: 500 });
+    }
+
+    const signals = raw.data?.signalsLatest ?? {};
+    const available: Record<string, { timestamp: string; value: unknown }> = {};
+    const unavailable: string[] = [];
+
+    for (const [key, val] of Object.entries(signals)) {
+      if (val !== null && val !== undefined) {
+        available[key] = val as { timestamp: string; value: unknown };
+      } else {
+        unavailable.push(key);
+      }
+    }
+
+    return NextResponse.json({ tokenId, available, unavailable });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
