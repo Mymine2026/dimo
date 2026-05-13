@@ -18,6 +18,13 @@ function fmtTime(ts: string) {
   return new Date(ts).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
 }
 
+// Evenly sample down to `max` points, always keeping first and last
+function samplePoints(pts: LocationPoint[], max: number): LocationPoint[] {
+  if (pts.length <= max) return pts;
+  const step = (pts.length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, i) => pts[Math.round(i * step)]);
+}
+
 export function VehicleMap({ locations, height = "300px" }: Props) {
   const mapRef      = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<{ remove: () => void } | null>(null);
@@ -34,29 +41,55 @@ export function VehicleMap({ locations, height = "300px" }: Props) {
       const map = L.map(mapRef.current!, { zoomControl: true });
       mapInstance.current = map;
 
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-        attribution: "© OpenStreetMap © CARTO",
-        subdomains: "abcd",
-        maxZoom: 20,
-      }).addTo(map);
+      // ── Tile layer ────────────────────────────────────────────────────────
+      const mapTilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+      if (mapTilerKey) {
+        L.tileLayer(
+          `https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${mapTilerKey}`,
+          {
+            attribution: '© <a href="https://www.maptiler.com" target="_blank">MapTiler</a> © <a href="https://www.openstreetmap.org" target="_blank">OpenStreetMap</a>',
+            maxZoom: 20,
+          }
+        ).addTo(map);
+      } else {
+        // Stadia Maps — free, no API key, retina-aware
+        L.tileLayer(
+          "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png",
+          {
+            attribution: '© <a href="https://stadiamaps.com/" target="_blank">Stadia Maps</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+            maxZoom: 20,
+            detectRetina: true,
+          }
+        ).addTo(map);
+      }
 
       const latLngs: [number, number][] = locations.map((p) => [p.latitude, p.longitude]);
 
-      // ── OSRM map-matching (2–100 punti) ──
+      // ── OSRM map-matching ─────────────────────────────────────────────────
       let routeDrawn = false;
-      if (locations.length >= 2 && locations.length <= 100) {
+      if (locations.length >= 2) {
         try {
-          const coords  = locations.map((l) => `${l.longitude},${l.latitude}`).join(";");
-          const radii   = locations.map(() => "50").join(";");
-          const url     = `https://router.project-osrm.org/match/v1/driving/${coords}?overview=full&geometries=geojson&radiuses=${radii}`;
+          const sampled = samplePoints(locations, 50);
+          const coords  = sampled.map((l) => `${l.longitude},${l.latitude}`).join(";");
+          const radii   = sampled.map(() => "50").join(";");
+          const url = `https://router.project-osrm.org/match/v1/driving/${coords}?overview=full&geometries=geojson&radiuses=${radii}`;
+
+          console.log(`[VehicleMap] OSRM: ${sampled.length} punti (originali: ${locations.length})`);
 
           const controller = new AbortController();
-          const tid = setTimeout(() => controller.abort(), 10_000);
-          const res = await fetch(url, { signal: controller.signal });
-          clearTimeout(tid);
+          const tid = setTimeout(() => controller.abort(), 5_000);
+          let res: Response;
+          try {
+            res = await fetch(url, { signal: controller.signal });
+          } finally {
+            clearTimeout(tid);
+          }
 
-          if (res.ok) {
-            const data = await res.json();
+          if (!res!.ok) {
+            const body = await res!.text().catch(() => "");
+            console.warn(`[VehicleMap] OSRM HTTP ${res!.status}:`, body.slice(0, 200));
+          } else {
+            const data = await res!.json();
             if (data.matchings?.length > 0) {
               const geojson = {
                 type: "FeatureCollection" as const,
@@ -67,21 +100,34 @@ export function VehicleMap({ locations, height = "300px" }: Props) {
                 })),
               };
               L.geoJSON(geojson, {
-                style: { color: "#3b82f6", weight: 3, opacity: 0.85 },
+                style: { color: "#3b82f6", weight: 3, opacity: 0.9 },
               }).addTo(map);
               routeDrawn = true;
+              console.log("[VehicleMap] OSRM: percorso tracciato");
+            } else {
+              console.warn("[VehicleMap] OSRM: nessun matching —", data.code, data.message);
             }
           }
-        } catch {
-          // fallback sotto
+        } catch (err) {
+          console.warn(
+            "[VehicleMap] OSRM fallito:",
+            err instanceof Error ? err.message : String(err)
+          );
         }
       }
 
+      // ── Fallback polyline (tratteggiata arancione = approssimativa) ───────
       if (!routeDrawn && latLngs.length > 1) {
-        L.polyline(latLngs, { color: "#3b82f6", weight: 3, opacity: 0.75 }).addTo(map);
+        L.polyline(latLngs, {
+          color: "#f59e0b",
+          weight: 2,
+          opacity: 0.75,
+          dashArray: "6 5",
+        }).addTo(map);
+        console.log("[VehicleMap] Fallback: polyline approssimativa");
       }
 
-      // ── Marker prima posizione (grigio) ──
+      // ── Marker partenza (grigio) ───────────────────────────────────────────
       if (latLngs.length > 1) {
         L.marker(latLngs[0], {
           icon: L.divIcon({
@@ -95,7 +141,7 @@ export function VehicleMap({ locations, height = "300px" }: Props) {
           .addTo(map);
       }
 
-      // ── Marker ultima posizione (verde) ──
+      // ── Marker ultima posizione (verde pulsante) ──────────────────────────
       const last = locations[locations.length - 1];
       L.marker(latLngs[latLngs.length - 1], {
         icon: L.divIcon({
