@@ -97,44 +97,53 @@ function formatTimestamp(ts: string | undefined): string | undefined {
 
 // ─── circular score ───────────────────────────────────────────────────────────
 
-function CircularScore({ score, label }: { score: number; label: string }) {
+function CircularScore({ score, avgSpeed }: { score: number; avgSpeed: number }) {
   const r = 28;
   const circ = 2 * Math.PI * r;
   const dash = (score / 100) * circ;
   const color = score >= 75 ? "#4ade80" : score >= 45 ? "#f59e0b" : "#f87171";
+  const label = score >= 75 ? "Stile di guida efficiente"
+              : score >= 45 ? "Stile di guida nella media"
+              : "Velocità non ottimale";
 
   return (
-    <div style={{ background: "#1e1f23", borderRadius: 16, padding: 16, display: "flex", alignItems: "center", gap: 14 }}>
-      <svg width="72" height="72" style={{ transform: "rotate(-90deg)" }}>
-        <circle cx="36" cy="36" r={r} fill="none" stroke="#2a2b30" strokeWidth="5" />
-        <circle
-          cx="36" cy="36" r={r} fill="none"
-          stroke={color} strokeWidth="5"
-          strokeDasharray={`${dash} ${circ - dash}`}
-          strokeLinecap="round"
-        />
-        <text
-          x="36" y="36"
-          textAnchor="middle" dominantBaseline="central"
-          fill={color} fontSize="15" fontWeight="700"
-          style={{ transform: "rotate(90deg)", transformOrigin: "36px 36px" }}
-        >
-          {score}
-        </text>
-      </svg>
-      <div>
-        <p className="font-bold text-white" style={{ fontSize: 16 }}>{label}</p>
-        <p style={{ fontSize: 11, color: "#8e9192", marginTop: 2 }}>
-          {score >= 75 ? "Ottima efficienza" : score >= 45 ? "Efficienza media" : "Efficienza bassa"}
-        </p>
+    <div style={{ background: "#1e1f23", borderRadius: 16, padding: 16 }}>
+      <div className="flex items-center gap-4">
+        <svg width="72" height="72" style={{ transform: "rotate(-90deg)", flexShrink: 0 }}>
+          <circle cx="36" cy="36" r={r} fill="none" stroke="#2a2b30" strokeWidth="5" />
+          <circle
+            cx="36" cy="36" r={r} fill="none"
+            stroke={color} strokeWidth="5"
+            strokeDasharray={`${dash} ${circ - dash}`}
+            strokeLinecap="round"
+          />
+          <text
+            x="36" y="36"
+            textAnchor="middle" dominantBaseline="central"
+            fill={color} fontSize="15" fontWeight="700"
+            style={{ transform: "rotate(90deg)", transformOrigin: "36px 36px" }}
+          >
+            {score}
+          </text>
+        </svg>
+        <div>
+          <p className="font-bold text-white" style={{ fontSize: 15 }}>Punteggio di guida</p>
+          <p style={{ fontSize: 12, color, marginTop: 2, fontWeight: 600 }}>{label}</p>
+          <p style={{ fontSize: 11, color: "#8e9192", marginTop: 4 }}>
+            Vel. media in marcia: <span className="text-white font-semibold">{Math.round(avgSpeed)} km/h</span>
+          </p>
+        </div>
       </div>
+      <p style={{ fontSize: 11, color: "#6b7280", marginTop: 10, borderTop: "1px solid #2a2b30", paddingTop: 8 }}>
+        Punteggio 0–100 basato sulla velocità media in marcia nel periodo selezionato. Ottimale tra 70 e 85 km/h per veicoli commerciali. Non include i periodi di sosta.
+      </p>
     </div>
   );
 }
 
 // ─── metric card ─────────────────────────────────────────────────────────────
 
-function MetricCard({ label, value, subtitle }: { label: string; value: string; subtitle?: string }) {
+function MetricCard({ label, value, subtitle, info }: { label: string; value: string; subtitle?: string; info?: string }) {
   return (
     <div style={{ background: "#1e1f23", borderRadius: 16, padding: 16 }}>
       <p
@@ -144,8 +153,11 @@ function MetricCard({ label, value, subtitle }: { label: string; value: string; 
         {label}
       </p>
       <p className="font-bold leading-none text-white" style={{ fontSize: 28 }}>{value}</p>
+      {info && (
+        <p style={{ fontSize: 11, color: "#60a5fa", marginTop: 6 }}>{info}</p>
+      )}
       {subtitle && (
-        <p style={{ fontSize: 11, color: "#8e9192", marginTop: 8 }}>{subtitle}</p>
+        <p style={{ fontSize: 11, color: "#8e9192", marginTop: info ? 2 : 8 }}>{subtitle}</p>
       )}
     </div>
   );
@@ -299,14 +311,21 @@ export default function VehicleDetailPage() {
 
   const dtcCount = latest?.obdStatusDTCCount ?? null;
 
-  // efficiency score: 100 - penalità per scostamento da 75 km/h ottimale
-  const drivingSpeeds = speedSignals.map(s => s.speed).filter(v => v > 0);
-  const avgSpeed      = drivingSpeeds.length > 0
-    ? drivingSpeeds.reduce((a, b) => a + b, 0) / drivingSpeeds.length
+  // Punteggio di guida: basato sulla velocità media in marcia (solo campioni > 5 km/h).
+  // Ottimale per veicoli commerciali: 70-85 km/h. Min 5 campioni per mostrare il dato.
+  const movingSpeeds  = speedSignals.map(s => s.speed).filter(v => v > 5);
+  const avgSpeed      = movingSpeeds.length >= 5
+    ? movingSpeeds.reduce((a, b) => a + b, 0) / movingSpeeds.length
     : null;
-  const efficiencyScore = avgSpeed != null
-    ? Math.min(100, Math.max(0, Math.round(100 - Math.abs(avgSpeed - 75) * 1.2)))
+  const drivingScore  = avgSpeed != null
+    ? Math.min(100, Math.max(0, Math.round(100 - Math.abs(avgSpeed - 78) * 1.1)))
     : null;
+
+  function torqueLabel(t: number): string {
+    if (t <= -10) return "Freno motore attivo";
+    if (t >= 10)  return "Motore in trazione";
+    return "Motore al minimo";
+  }
 
   return (
     <ErrorBoundary>
@@ -374,23 +393,28 @@ export default function VehicleDetailPage() {
       </div>
 
       {/* ── Range pills ────────────────────────────────────────────────── */}
-      <div className="flex gap-2 mb-6">
-        {RANGES.map((r) => {
-          const active = r.value === range;
-          return (
-            <button
-              key={r.value}
-              onClick={() => setRange(r.value)}
-              className="flex-1 text-xs font-semibold py-2 rounded-full transition-colors"
-              style={{
-                background: active ? "#ffffff" : "#1e1f23",
-                color:      active ? "#000000" : "#8e9192",
-              }}
-            >
-              {r.label}
-            </button>
-          );
-        })}
+      <div className="mb-2">
+        <div className="flex gap-2">
+          {RANGES.map((r) => {
+            const active = r.value === range;
+            return (
+              <button
+                key={r.value}
+                onClick={() => setRange(r.value)}
+                className="flex-1 text-xs font-semibold py-2 rounded-full transition-colors"
+                style={{
+                  background: active ? "#ffffff" : "#1e1f23",
+                  color:      active ? "#000000" : "#8e9192",
+                }}
+              >
+                {r.label}
+              </button>
+            );
+          })}
+        </div>
+        <p style={{ fontSize: 11, color: "#6b7280", marginTop: 6, marginBottom: 12 }}>
+          Il periodo selezionato aggiorna i grafici e il punteggio di guida. I valori in tempo reale (velocità, carburante, ecc.) sono sempre aggiornati all&apos;ultimo dato ricevuto dal sensore.
+        </p>
       </div>
 
       {/* ── Error ──────────────────────────────────────────────────────── */}
@@ -473,14 +497,16 @@ export default function VehicleDetailPage() {
               <MetricCard
                 label="Coppia motore"
                 value={`${Math.round(torquePercent)}%`}
-                subtitle={lastUpdated}
+                info={torqueLabel(torquePercent)}
+                subtitle="Scala –125%..+125% (J1939)"
               />
             )}
             {accumulatedFuel != null && (
               <MetricCard
-                label="Consumo totale"
+                label="Carburante totale"
                 value={`${Math.round(accumulatedFuel).toLocaleString()} L`}
-                subtitle={lastUpdated}
+                info="Totale dall'inizio del monitoraggio"
+                subtitle="Non varia col periodo selezionato"
               />
             )}
           </div>
@@ -511,9 +537,9 @@ export default function VehicleDetailPage() {
                 <div className="flex items-center gap-1.5">
                   <Zap className="w-3.5 h-3.5" style={{ color: "#8e9192" }} />
                   <span className="text-xs" style={{ color: "#8e9192" }}>
-                    Ignizione{" "}
+                    Quadro{" "}
                     <span className="font-semibold" style={{ color: Number(ignition) !== 0 ? "#4ade80" : "#8e9192" }}>
-                      {Number(ignition) !== 0 ? "ON" : "OFF"}
+                      {Number(ignition) !== 0 ? "Acceso" : "Spento"}
                     </span>
                   </span>
                 </div>
@@ -555,10 +581,10 @@ export default function VehicleDetailPage() {
             </div>
           )}
 
-          {/* ── Efficiency score ─────────────────────────────────────── */}
-          {efficiencyScore != null && (
+          {/* ── Driving score ────────────────────────────────────────── */}
+          {drivingScore != null && avgSpeed != null && (
             <div className="mb-4">
-              <CircularScore score={efficiencyScore} label="Efficiency Score" />
+              <CircularScore score={drivingScore} avgSpeed={avgSpeed} />
             </div>
           )}
 
@@ -584,6 +610,9 @@ export default function VehicleDetailPage() {
               {torqueSignals.length > 0 && (
                 <ChartPanel icon={BarChart2} iconColor="#f97316" title="Coppia motore (%)">
                   <SignalChart signals={torqueSignals} field="torquePercent" label="Torque" color="#f97316" unit="%" range={range} />
+                  <p style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>
+                    Scala –125% (freno motore massimo) · 0% (minimo) · +125% (trazione massima). Valori negativi indicano che il motore sta frenando il veicolo (es. in discesa o in decelerazione).
+                  </p>
                 </ChartPanel>
               )}
             </>
