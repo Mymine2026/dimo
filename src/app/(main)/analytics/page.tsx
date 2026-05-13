@@ -79,17 +79,20 @@ function buildSessions(signals: Signal[]): TripSession[] {
         const t1 = new Date(chunk[chunk.length - 1].timestamp);
         const dur = Math.round((t1.getTime() - t0.getTime()) / 60_000);
 
-        // km = somma delle differenze odometro consecutive positive
+        // km = delta odometro (primo → ultimo non-null nella sessione)
+        // Richiede entrambi i valori; scarta se > 500 km (dato anomalo)
         let km: number | null = null;
         let kmEstimated = false;
-        for (let j = 1; j < chunk.length; j++) {
-          const prev = chunk[j - 1].odometer;
-          const curr = chunk[j].odometer;
-          if (prev != null && curr != null && curr > prev) {
-            km = (km ?? 0) + (curr - prev);
-          }
+        const firstOdo = chunk.find(s => s.odometer != null)?.odometer ?? null;
+        const lastOdo  = [...chunk].reverse().find(s => s.odometer != null)?.odometer ?? null;
+        if (firstOdo != null && lastOdo != null) {
+          const delta = lastOdo - firstOdo;
+          if (delta > 0 && delta <= 500) km = Math.round(delta);
+          // delta <= 0: sensore non avanzato → fallback
+          // delta > 500: anomalia → fallback
         }
-        // fallback: integrazione trapezioidale velocità × tempo (più accurata di avgSpeed × dur)
+
+        // fallback: integrazione trapezioidale velocità × tempo
         if (km == null) {
           let kmEst = 0;
           for (let j = 1; j < chunk.length; j++) {

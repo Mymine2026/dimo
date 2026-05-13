@@ -489,7 +489,7 @@ export default function VehicleDetailPage() {
       {(!loading || signals.length > 0) && (
         <>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <MetricCard label="Velocità"     value={formatSpeed(speed)}  subtitle={lastUpdated} />
+            <MetricCard label="Velocità"     value={formatSpeed(ignition != null && Number(ignition) === 0 ? null : speed)}  subtitle={lastUpdated} />
             <MetricCard label="Carburante"   value={formatPercent(fuel)} subtitle={lastUpdated} />
             {engineOn && (
               <MetricCard
