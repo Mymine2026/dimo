@@ -27,6 +27,7 @@ export interface Vehicle {
 export interface TelemetrySignal {
   timestamp: string;
   speed: number | null;
+  speedMax: number | null;
   fuelLevel: number | null;              // 0-100 %
   fuelAbsolute: number | null;           // litres
   range: number | null;                  // metres

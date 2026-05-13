@@ -13,6 +13,7 @@ const TELEMETRY_QUERY = `
     signals(tokenId: $tokenId, interval: $interval, from: $from, to: $to) {
       timestamp
       speed(agg: AVG)
+      speedMax: speed(agg: MAX)
       fuelLevel: powertrainFuelSystemRelativeLevel(agg: AVG)
       fuelAbsolute: powertrainFuelSystemAbsoluteLevel(agg: LAST)
       range: powertrainRange(agg: LAST)

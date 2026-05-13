@@ -25,6 +25,7 @@ interface MaintenanceRecord {
 interface Signal {
   timestamp: string;
   speed: number | null;
+  speedMax?: number | null;
   odometer: number | null;
 }
 
@@ -48,10 +49,33 @@ interface DayGroup {
 // 2h gap = nuova sessione (dati orari: gap normale < 2h)
 const GAP_MS = 2 * 60 * 60 * 1000;
 
+// Zero out frozen sensor readings: same non-zero speed for 2+ consecutive hours where avg==max
+// (avg==max means only one raw sample that hour — classic stale/disconnected sensor behaviour)
+function defrost(signals: Signal[]): Signal[] {
+  const out = signals.map(s => ({ ...s }));
+  let i = 0;
+  while (i < out.length) {
+    const spd = out[i].speed ?? 0;
+    if (spd <= 0) { i++; continue; }
+    // find consecutive run where value is identical AND avg==max (or no max available)
+    let j = i;
+    while (
+      j < out.length &&
+      (out[j].speed ?? 0) === spd &&
+      (out[j].speedMax == null || out[j].speedMax === spd)
+    ) j++;
+    if (j - i >= 2) {
+      for (let k = i; k < j; k++) out[k].speed = 0;
+    }
+    i = j > i ? j : i + 1;
+  }
+  return out;
+}
+
 function buildSessions(signals: Signal[]): TripSession[] {
   if (!signals.length) return [];
-  const sorted = [...signals].sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  const sorted = defrost(
+    [...signals].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
   );
   const sessions: TripSession[] = [];
   let start = 0;
