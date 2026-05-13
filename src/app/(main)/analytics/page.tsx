@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle, BarChart2, ChevronDown, Clock, Route, Wrench, X,
+  AlertTriangle, BarChart2, ChevronDown, Route, Wrench, X,
 } from "lucide-react";
 
 // ─── types ────────────────────────────────────────────────────────────────────
@@ -27,6 +27,7 @@ interface Signal {
   speed: number | null;
   speedMax?: number | null;
   odometer: number | null;
+  location?: { latitude: number; longitude: number } | null;
 }
 
 interface TripSession {
@@ -35,6 +36,8 @@ interface TripSession {
   km: number | null;
   kmEstimated: boolean;
   durationMin: number;
+  startCoords: { latitude: number; longitude: number } | null;
+  endCoords:   { latitude: number; longitude: number } | null;
 }
 
 interface DayGroup {
@@ -128,12 +131,34 @@ function buildSessions(signals: Signal[]): TripSession[] {
           if (kmEst > 0) { km = Math.round(kmEst); kmEstimated = true; }
         }
 
-        if (dur > 5) sessions.push({ startTime: t0, endTime: t1, km, kmEstimated, durationMin: dur });
+        const startCoords = chunk.find(s => s.location?.latitude != null)?.location ?? null;
+        const endCoords   = [...chunk].reverse().find(s => s.location?.latitude != null)?.location ?? null;
+
+        if (dur > 5) sessions.push({ startTime: t0, endTime: t1, km, kmEstimated, durationMin: dur, startCoords, endCoords });
       }
       start = i;
     }
   }
   return sessions;
+}
+
+async function reverseGeocode(lat: number, lon: number): Promise<string> {
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+    { headers: { "Accept-Language": "it", "User-Agent": "MyMine-Fleet/1.0" } }
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const d = await res.json();
+  const a = d.address ?? {};
+  return (
+    [a.road, a.city ?? a.town ?? a.village ?? a.county].filter(Boolean).join(", ") ||
+    d.display_name?.split(",")[0] ||
+    `${lat.toFixed(3)}, ${lon.toFixed(3)}`
+  );
+}
+
+function geoKey(c: { latitude: number; longitude: number }) {
+  return `${c.latitude.toFixed(3)},${c.longitude.toFixed(3)}`;
 }
 
 function groupByDay(sessions: TripSession[]): DayGroup[] {
@@ -265,6 +290,8 @@ export default function AnalyticsPage() {
   const [loadingTrips, setLoadingTrips] = useState(false);
 
   const [modal, setModal]             = useState<ModalType>(null);
+  const [geoLabels, setGeoLabels]     = useState<Map<string, string>>(new Map());
+  const geocodeCacheRef               = useRef(new Map<string, string>());
 
   // ── load vehicles ──
   useEffect(() => {
@@ -281,7 +308,7 @@ export default function AnalyticsPage() {
 
   // ── load data when vehicle changes ──
   const loadData = useCallback(async (tokenId: number) => {
-    setAdBlue(null); setOdometer(null); setMaintenance([]); setSessions([]);
+    setAdBlue(null); setOdometer(null); setMaintenance([]); setSessions([]); setGeoLabels(new Map());
     setLoadingMain(true); setLoadingTrips(true);
 
     // latest (adBlue + odometer)
@@ -314,6 +341,43 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (selectedId != null) loadData(selectedId);
   }, [selectedId, loadData]);
+
+  // ── geocode start/end coords for each session ──
+  useEffect(() => {
+    if (!sessions.length) return;
+    // Collect unique coords not yet in cache
+    const toFetch: { key: string; lat: number; lon: number }[] = [];
+    const fromCache = new Map<string, string>();
+    for (const s of sessions) {
+      for (const c of [s.startCoords, s.endCoords]) {
+        if (!c) continue;
+        const k = geoKey(c);
+        const cached = geocodeCacheRef.current.get(k);
+        if (cached) { fromCache.set(k, cached); }
+        else { toFetch.push({ key: k, lat: c.latitude, lon: c.longitude }); }
+      }
+    }
+    if (fromCache.size) setGeoLabels(m => { const n = new Map(m); fromCache.forEach((v, k) => n.set(k, v)); return n; });
+    const unique = [...new Map(toFetch.map(c => [c.key, c])).values()];
+    if (!unique.length) return;
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < unique.length; i++) {
+        if (cancelled) break;
+        if (i > 0) await new Promise(r => setTimeout(r, 1200)); // Nominatim: max 1 req/s
+        if (cancelled) break;
+        const { key, lat, lon } = unique[i];
+        try {
+          const label = await reverseGeocode(lat, lon);
+          geocodeCacheRef.current.set(key, label);
+          if (!cancelled) setGeoLabels(m => { const n = new Map(m); n.set(key, label); return n; });
+        } catch {
+          geocodeCacheRef.current.set(key, `${lat.toFixed(2)}, ${lon.toFixed(2)}`);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [sessions]);
 
   // ── maintenance helpers ──
   const tagliando = maintenance.filter((m) => m.type === "tagliando").sort(
@@ -603,34 +667,52 @@ export default function AnalyticsPage() {
 
                   {/* Sessions */}
                   <div className="flex flex-col gap-2">
-                    {day.sessions.map((s, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between rounded-xl px-3 py-2.5"
-                        style={{ background: "#14151a" }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-3.5 h-3.5" style={{ color: "#3b82f6" }} />
-                          <span className="text-xs text-white">
-                            {fmtTime(s.startTime)} → {fmtTime(s.endTime)}
-                          </span>
+                    {day.sessions.map((s, i) => {
+                      const sk = s.startCoords ? geoKey(s.startCoords) : null;
+                      const ek = s.endCoords   ? geoKey(s.endCoords)   : null;
+                      const startAddr = sk ? geoLabels.get(sk) : null;
+                      const endAddr   = ek ? geoLabels.get(ek) : null;
+                      return (
+                        <div key={i} className="rounded-xl p-3" style={{ background: "#14151a" }}>
+                          <div className="flex gap-2.5">
+                            {/* Timeline */}
+                            <div className="flex flex-col items-center shrink-0" style={{ paddingTop: 3 }}>
+                              <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#22c55e", border: "2px solid rgba(255,255,255,0.8)", display: "block", flexShrink: 0 }} />
+                              <span style={{ width: 2, flex: 1, background: "#374151", display: "block", margin: "3px 0", minHeight: 16 }} />
+                              <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#ef4444", border: "2px solid rgba(255,255,255,0.8)", display: "block", flexShrink: 0 }} />
+                            </div>
+                            {/* Addresses + times */}
+                            <div className="flex-1 min-w-0 flex flex-col justify-between" style={{ gap: 10 }}>
+                              <div className="flex items-baseline justify-between gap-2">
+                                <span className="text-xs font-medium text-white truncate">
+                                  {startAddr ?? (s.startCoords ? "…" : "—")}
+                                </span>
+                                <span className="text-xs shrink-0" style={{ color: "#6b7280" }}>{fmtTime(s.startTime)}</span>
+                              </div>
+                              <div className="flex items-baseline justify-between gap-2">
+                                <span className="text-xs font-medium text-white truncate">
+                                  {endAddr ?? (s.endCoords ? "…" : "—")}
+                                </span>
+                                <span className="text-xs shrink-0" style={{ color: "#6b7280" }}>{fmtTime(s.endTime)}</span>
+                              </div>
+                            </div>
+                            {/* Stats */}
+                            <div className="flex flex-col items-end justify-center shrink-0 ml-1" style={{ gap: 2 }}>
+                              {s.km != null && (
+                                <span
+                                  className="text-sm font-bold leading-none"
+                                  style={{ color: s.kmEstimated ? "#8e9192" : "#ffffff" }}
+                                  title={s.kmEstimated ? "Stima da velocità (odometro non disponibile)" : undefined}
+                                >
+                                  {s.kmEstimated ? "~" : ""}{Math.round(s.km)} km
+                                </span>
+                              )}
+                              <span className="text-xs" style={{ color: "#6b7280" }}>{fmtDur(s.durationMin)}</span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          {s.km != null && (
-                            <span
-                              className="text-xs font-semibold"
-                              style={{ color: s.kmEstimated ? "#8e9192" : "#ffffff" }}
-                              title={s.kmEstimated ? "Stima basata su velocità media (odometro non disponibile)" : undefined}
-                            >
-                              {s.kmEstimated ? "~" : ""}{Math.round(s.km).toLocaleString()} km
-                            </span>
-                          )}
-                          <span className="text-xs" style={{ color: "#8e9192" }}>
-                            {fmtDur(s.durationMin)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))

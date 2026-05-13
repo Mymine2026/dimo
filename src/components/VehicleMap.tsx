@@ -42,10 +42,23 @@ export function VehicleMap({ locations, height = "300px" }: Props) {
       mapInstance.current = map;
 
       // ── Tile layer ────────────────────────────────────────────────────────
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
-      }).addTo(map);
+      const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+      if (mapboxToken) {
+        L.tileLayer(
+          `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/{z}/{x}/{y}?access_token=${mapboxToken}`,
+          {
+            tileSize: 512,
+            zoomOffset: -1,
+            attribution: '© <a href="https://www.mapbox.com" target="_blank">Mapbox</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+            maxZoom: 22,
+          }
+        ).addTo(map);
+      } else {
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+          maxZoom: 19,
+        }).addTo(map);
+      }
 
       const latLngs: [number, number][] = locations.map((p) => [p.latitude, p.longitude]);
 
@@ -84,7 +97,7 @@ export function VehicleMap({ locations, height = "300px" }: Props) {
                 })),
               };
               L.geoJSON(geojson, {
-                style: { color: "#3b82f6", weight: 3, opacity: 0.9 },
+                style: { color: "#f97316", weight: 5, opacity: 0.9 },
               }).addTo(map);
               routeDrawn = true;
               console.log("[VehicleMap] OSRM: percorso tracciato");
@@ -111,12 +124,12 @@ export function VehicleMap({ locations, height = "300px" }: Props) {
         console.log("[VehicleMap] Fallback: polyline approssimativa");
       }
 
-      // ── Marker partenza (grigio) ───────────────────────────────────────────
+      // ── Marker partenza (rosso) ───────────────────────────────────────────
       if (latLngs.length > 1) {
         L.marker(latLngs[0], {
           icon: L.divIcon({
-            html: `<div style="width:10px;height:10px;border-radius:50%;background:#6b7280;border:2px solid #fff"></div>`,
-            iconSize: [10, 10],
+            html: `<div style="width:11px;height:11px;border-radius:50%;background:#ef4444;border:2px solid #fff;box-shadow:0 0 6px rgba(239,68,68,0.6)"></div>`,
+            iconSize: [11, 11],
             iconAnchor: [5, 5],
             className: "",
           }),
