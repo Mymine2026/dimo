@@ -5,13 +5,20 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Vehicle } from "@/types/dimo";
-import { Loader2, AlertCircle, Search, Truck, Wifi, Cpu, AlertTriangle } from "lucide-react";
+import { Loader2, AlertCircle, Search, Truck, Wifi, Cpu, AlertTriangle, MapPin } from "lucide-react";
+import dynamic from "next/dynamic";
+import type { FleetPosition } from "@/components/FleetMap";
+const FleetMap = dynamic(
+  () => import("@/components/FleetMap").then((m) => ({ default: m.FleetMap })),
+  { ssr: false, loading: () => <div className="rounded-xl animate-pulse" style={{ background: "#1e1f23", height: 260 }} /> }
+);
 
 type VehicleStatus = "ACTIVE" | "IN SERVICE" | "NO SIGNAL";
 
 interface VehicleAlerts {
   adBlue: number | null;
   dtcCount: number | null;
+  position?: { latitude: number; longitude: number; timestamp: string } | null;
 }
 
 function computeHealth(v: Vehicle): number {
@@ -203,6 +210,7 @@ export default function VehiclesPage() {
                   tokenId: v.tokenId,
                   adBlue: (d.powertrainCombustionEngineDieselExhaustFluidLevel as number | null) ?? null,
                   dtcCount: (d.obdStatusDTCCount as number | null) ?? null,
+                  position: (d.currentLocationCoordinates as { latitude: number; longitude: number; timestamp: string } | null) ?? null,
                 }))
                 .catch(() => null)
             )
@@ -239,6 +247,19 @@ export default function VehiclesPage() {
   const activeCount    = vehicles.filter((v) => computeStatus(v) === "ACTIVE").length;
   const serviceCount   = vehicles.filter((v) => computeStatus(v) === "IN SERVICE").length;
   const noSignalCount  = vehicles.filter((v) => computeStatus(v) === "NO SIGNAL").length;
+
+  const fleetPositions: FleetPosition[] = vehicles
+    .filter((v) => latestMap.get(v.tokenId)?.position != null)
+    .map((v) => {
+      const pos = latestMap.get(v.tokenId)!.position!;
+      return {
+        tokenId: v.tokenId,
+        label: `${v.definition.make} ${v.definition.model}`,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        timestamp: pos.timestamp,
+      };
+    });
 
   return (
     <div className="px-4 pt-6 pb-8" style={{ minHeight: "100vh" }}>
@@ -319,6 +340,27 @@ export default function VehiclesPage() {
               <p style={{ fontSize: 13, color: "#8e9192" }}>
                 {search ? `per "${search}"` : "Nessun veicolo nella flotta"}
               </p>
+            </div>
+          )}
+
+          {/* ── Posizioni Fleet ── */}
+          {fleetPositions.length > 0 && (
+            <div style={{ background: "#1e1f23", borderRadius: 16, padding: 16, marginTop: 16 }}>
+              <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+                <div
+                  className="flex items-center justify-center"
+                  style={{ width: 24, height: 24, background: "#22c55e22", borderRadius: 6 }}
+                >
+                  <MapPin className="w-3.5 h-3.5" style={{ color: "#22c55e" }} />
+                </div>
+                <h3 className="text-sm font-semibold text-white">Posizioni Fleet</h3>
+                <span style={{ fontSize: 11, color: "#8e9192", marginLeft: "auto" }}>
+                  {fleetPositions.length} veicol{fleetPositions.length === 1 ? "o" : "i"}
+                </span>
+              </div>
+              <div style={{ borderRadius: 12, overflow: "hidden" }}>
+                <FleetMap positions={fleetPositions} height="260px" />
+              </div>
             </div>
           )}
         </>

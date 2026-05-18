@@ -60,5 +60,5 @@ export interface LatestStatus {
   exteriorAirTemperature?: number | null;
   isIgnitionOn?: number | null;
   obdStatusDTCCount?: number | null;
-  currentLocationCoordinates?: { latitude: number; longitude: number } | null;
+  currentLocationCoordinates?: { timestamp: string; latitude: number; longitude: number } | null;
 }

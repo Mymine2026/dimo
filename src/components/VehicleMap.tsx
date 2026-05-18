@@ -33,6 +33,8 @@ interface Props {
   allLocations: LocationPoint[];
   /** Recent GPS points for the route view (e.g. last 24h) */
   recentLocations: LocationPoint[];
+  /** Last known position from /api/latest — shown as a parking marker when no track data */
+  lastKnownPosition?: { latitude: number; longitude: number; timestamp: string };
   height?: string;
 }
 
@@ -55,7 +57,7 @@ function fmtTime(ts: string) {
 }
 
 
-export function VehicleMap({ allLocations, recentLocations, height = "300px" }: Props) {
+export function VehicleMap({ allLocations, recentLocations, lastKnownPosition, height = "300px" }: Props) {
   const [mode, setMode] = useState<MapMode>("heatmap");
   const modeRef     = useRef<MapMode>("heatmap");
   const mapRef      = useRef<HTMLDivElement>(null);
@@ -70,8 +72,10 @@ export function VehicleMap({ allLocations, recentLocations, height = "300px" }: 
   useEffect(() => {
     const heatPts = allLocations;
     const routePts = recentLocations.length > 0 ? recentLocations : allLocations;
+    const parkingOnly = heatPts.length === 0 && !!lastKnownPosition;
 
-    if (!mapRef.current || heatPts.length === 0) return;
+    if (!mapRef.current) return;
+    if (heatPts.length === 0 && !lastKnownPosition) return;
 
     if (mapInstance.current) { mapInstance.current.remove(); mapInstance.current = null; }
     heatRef.current  = null;
@@ -82,8 +86,6 @@ export function VehicleMap({ allLocations, recentLocations, height = "300px" }: 
     (async () => {
       const Lmod = await import("leaflet");
       const L = Lmod.default ?? (Lmod as unknown as typeof import("leaflet"));
-      await import("leaflet.heat");
-      const LH = L as unknown as typeof L & LHeat;
 
       if (!isMounted || !mapRef.current) return;
 
@@ -108,6 +110,29 @@ export function VehicleMap({ allLocations, recentLocations, height = "300px" }: 
           maxZoom: 19,
         }).addTo(map);
       }
+
+      if (!isMounted) return;
+
+      // ── Parking-only mode: no track data, just show last known position ──
+      if (parkingOnly) {
+        const lkp = lastKnownPosition!;
+        const d = new Date(lkp.timestamp);
+        const label = `${d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`;
+        L.marker([lkp.latitude, lkp.longitude], {
+          icon: L.divIcon({
+            html: `<div style="width:36px;height:36px;background:#1a1b1e;border:2px solid #60a5fa;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 2px 8px rgba(0,0,0,0.6)">🅿️</div>`,
+            iconSize: [36, 36],
+            iconAnchor: [18, 36],
+            className: "",
+          }),
+        }).bindPopup(`Ultima posizione nota · ${label}`).addTo(map);
+        map.setView([lkp.latitude, lkp.longitude], 14);
+        return;
+      }
+
+      // ── Full track mode ──
+      await import("leaflet.heat");
+      const LH = L as unknown as typeof L & LHeat;
 
       // ── Heatmap layer ──
       const heat = LH.heatLayer(
@@ -172,7 +197,7 @@ export function VehicleMap({ allLocations, recentLocations, height = "300px" }: 
       if (mapInstance.current) { mapInstance.current.remove(); mapInstance.current = null; }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(allLocations), JSON.stringify(recentLocations)]);
+  }, [JSON.stringify(allLocations), JSON.stringify(recentLocations), JSON.stringify(lastKnownPosition)]);
 
   // ── Mode toggle: swap layers without recreating the map ──────────────────────
   useEffect(() => {
@@ -189,7 +214,8 @@ export function VehicleMap({ allLocations, recentLocations, height = "300px" }: 
     }
   }, [mode]);
 
-  const hasLocations = allLocations.length > 0 || recentLocations.length > 0;
+  const hasLocations = allLocations.length > 0 || recentLocations.length > 0 || !!lastKnownPosition;
+  const hasTrack = allLocations.length > 0 || recentLocations.length > 0;
 
   if (!hasLocations) {
     return (
@@ -205,26 +231,28 @@ export function VehicleMap({ allLocations, recentLocations, height = "300px" }: 
   return (
     <div style={{ position: "relative", height }}>
       <div ref={mapRef} className="w-full h-full" style={{ zIndex: 0 }} />
-      <button
-        onClick={() => setMode(m => m === "heatmap" ? "route" : "heatmap")}
-        style={{
-          position: "absolute",
-          top: 8,
-          right: 8,
-          zIndex: 1000,
-          background: "#1e1f23",
-          border: "1px solid rgba(255,255,255,0.3)",
-          color: "#ffffff",
-          borderRadius: 8,
-          padding: "5px 10px",
-          fontSize: 12,
-          fontWeight: 600,
-          cursor: "pointer",
-          backdropFilter: "blur(4px)",
-        }}
-      >
-        {mode === "heatmap" ? "📍 Percorso" : "🔥 Heatmap"}
-      </button>
+      {hasTrack && (
+        <button
+          onClick={() => setMode(m => m === "heatmap" ? "route" : "heatmap")}
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            zIndex: 1000,
+            background: "#1e1f23",
+            border: "1px solid rgba(255,255,255,0.3)",
+            color: "#ffffff",
+            borderRadius: 8,
+            padding: "5px 10px",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          {mode === "heatmap" ? "📍 Percorso" : "🔥 Heatmap"}
+        </button>
+      )}
     </div>
   );
 }

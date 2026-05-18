@@ -721,6 +721,7 @@ export default function VehicleDetailPage() {
               <VehicleMap
                 allLocations={locations}
                 recentLocations={gpsTrack}
+                lastKnownPosition={latest?.currentLocationCoordinates ?? undefined}
                 height="350px"
               />
             </div>

@@ -38,12 +38,24 @@ export async function GET(req: Request) {
     const raw = data?.signalsLatest;
     if (!raw) return NextResponse.json(null);
 
-    // GraphQL returns each signal as { timestamp, value } — flatten to plain values
+    // GraphQL returns each signal as { timestamp, value } — flatten to plain values.
+    // currentLocationCoordinates is special: keep timestamp alongside lat/lng.
     const flattened: Record<string, unknown> = {};
     for (const [key, signal] of Object.entries(raw)) {
-      flattened[key] = signal != null && typeof signal === 'object' && 'value' in signal
-        ? signal.value
-        : signal;
+      if (
+        key === 'currentLocationCoordinates' &&
+        signal != null && typeof signal === 'object' &&
+        'value' in signal && signal.value != null
+      ) {
+        flattened[key] = {
+          timestamp: (signal as { timestamp: string }).timestamp,
+          ...(signal.value as { latitude: number; longitude: number }),
+        };
+      } else {
+        flattened[key] = signal != null && typeof signal === 'object' && 'value' in signal
+          ? signal.value
+          : signal;
+      }
     }
     return NextResponse.json(flattened);
   } catch (err) {
