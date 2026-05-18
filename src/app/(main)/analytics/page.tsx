@@ -124,7 +124,7 @@ function isAnomalous(km: number, ms: number): boolean {
   return (km / hours) > 200; // > 200 km/h = GPS anomaly
 }
 
-function buildSessions(signals: Signal[]): TripSession[] {
+function buildSessions(signals: Signal[], intervalMs = 10 * 60_000): TripSession[] {
   // Use only signals with valid GPS coordinates
   const gps = [...signals]
     .filter(s => s.location?.latitude != null && s.location?.longitude != null)
@@ -132,8 +132,8 @@ function buildSessions(signals: Signal[]): TripSession[] {
 
   if (gps.length < 2) return [];
 
-  // 2-hour gap = new session (tolerates motorway rest stops)
-  const GAP_MS = 2 * 60 * 60_000;
+  // Gap must exceed the data interval; 2h minimum to survive motorway rest stops
+  const GAP_MS = Math.max(2 * 60 * 60_000, 2 * intervalMs);
   const sessions: TripSession[] = [];
   let start = 0;
 
@@ -381,12 +381,13 @@ export default function AnalyticsPage() {
     const { from, to } = getPeriodRange(p);
     // For 30d/mese use 3h buckets (240 pts vs 720) so the DIMO API doesn't time out
     const intervalStr = p === "oggi" ? "10m" : p === "7gg" ? "1h" : "3h";
+    const intervalMs  = p === "oggi" ? 10 * 60_000 : p === "7gg" ? 60 * 60_000 : 3 * 60 * 60_000;
     const fromStr     = from.toISOString();
     const toStr       = to.toISOString();
 
     fetch(`/api/telemetry?tokenId=${tokenId}&from=${fromStr}&to=${toStr}&interval=${intervalStr}&slim=1`)
       .then((r) => r.json())
-      .then((d: Signal[]) => Array.isArray(d) ? setSessions(buildSessions(d)) : setSessions([]))
+      .then((d: Signal[]) => Array.isArray(d) ? setSessions(buildSessions(d, intervalMs)) : setSessions([]))
       .catch(() => setSessions([]))
       .finally(() => setLoadingTrips(false));
   }, []);
