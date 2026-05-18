@@ -27,6 +27,7 @@ interface MaintenanceRecord {
 
 interface Signal {
   timestamp: string;
+  speed?: number | null;
   location?: { latitude: number; longitude: number } | null;
 }
 
@@ -118,60 +119,63 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function isAnomalous(km: number, ms: number): boolean {
-  const hours = ms / 3_600_000;
-  if (hours === 0) return true;
-  return (km / hours) > 200; // > 200 km/h = GPS anomaly
+function calcSessionKm(points: Signal[]): number {
+  let km = 0;
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    if (!prev.location || !curr.location) continue;
+    const ms = new Date(curr.timestamp).getTime() - new Date(prev.timestamp).getTime();
+    const d  = haversineKm(
+      prev.location.latitude, prev.location.longitude,
+      curr.location.latitude, curr.location.longitude,
+    );
+    // Discard GPS jumps implying > 200 km/h
+    if (ms > 0 && (d / (ms / 3_600_000)) <= 200) km += d;
+  }
+  return km;
 }
 
-function buildSessions(signals: Signal[], intervalMs = 10 * 60_000): TripSession[] {
-  // Use only signals with valid GPS coordinates
-  const gps = [...signals]
-    .filter(s => s.location?.latitude != null && s.location?.longitude != null)
-    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+function buildSessions(signals: Signal[]): TripSession[] {
+  const sorted = [...signals].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
 
-  if (gps.length < 2) return [];
-
-  // Gap must exceed the data interval; 2h minimum to survive motorway rest stops
-  const GAP_MS = Math.max(2 * 60 * 60_000, 2 * intervalMs);
   const sessions: TripSession[] = [];
-  let start = 0;
+  let current: Signal[] = [];
 
-  for (let i = 1; i <= gps.length; i++) {
-    const isLast = i === gps.length;
-    const gapBreak =
-      !isLast &&
-      new Date(gps[i].timestamp).getTime() - new Date(gps[i - 1].timestamp).getTime() > GAP_MS;
-
-    if (isLast || gapBreak) {
-      const chunk = gps.slice(start, i);
-      if (chunk.length >= 2) {
-        let km = 0;
-        for (let j = 1; j < chunk.length; j++) {
-          const ms = new Date(chunk[j].timestamp).getTime() - new Date(chunk[j - 1].timestamp).getTime();
-          const d  = haversineKm(
-            chunk[j - 1].location!.latitude, chunk[j - 1].location!.longitude,
-            chunk[j].location!.latitude,     chunk[j].location!.longitude,
-          );
-          if (!isAnomalous(d, ms)) km += d;
-        }
-        const t0  = new Date(chunk[0].timestamp);
-        const t1  = new Date(chunk[chunk.length - 1].timestamp);
-        const dur = Math.round((t1.getTime() - t0.getTime()) / 60_000);
-        if (km > 1 && dur > 3) {
+  const flush = () => {
+    if (current.length >= 2) {
+      const km = calcSessionKm(current);
+      if (km > 1) {
+        const t0 = new Date(current[0].timestamp);
+        const t1 = new Date(current[current.length - 1].timestamp);
+        const startCoords = current.find(s => s.location?.latitude != null)?.location ?? null;
+        const endCoords   = [...current].reverse().find(s => s.location?.latitude != null)?.location ?? null;
+        if (startCoords && endCoords) {
           sessions.push({
             startTime:   t0,
             endTime:     t1,
             km,
-            durationMin: dur,
-            startCoords: chunk[0].location!,
-            endCoords:   chunk[chunk.length - 1].location!,
+            durationMin: Math.round((t1.getTime() - t0.getTime()) / 60_000),
+            startCoords,
+            endCoords,
           });
         }
       }
-      start = i;
+    }
+    current = [];
+  };
+
+  for (const s of sorted) {
+    if ((s.speed ?? 0) > 2) {
+      current.push(s);
+    } else {
+      flush();
     }
   }
+  flush();
+
   return sessions;
 }
 
@@ -379,15 +383,12 @@ export default function AnalyticsPage() {
       .finally(() => setLoadingMain(false));
 
     const { from, to } = getPeriodRange(p);
-    // For 30d/mese use 3h buckets (240 pts vs 720) so the DIMO API doesn't time out
-    const intervalStr = p === "oggi" ? "10m" : p === "7gg" ? "1h" : "3h";
-    const intervalMs  = p === "oggi" ? 10 * 60_000 : p === "7gg" ? 60 * 60_000 : 3 * 60 * 60_000;
-    const fromStr     = from.toISOString();
-    const toStr       = to.toISOString();
+    const fromStr = from.toISOString();
+    const toStr   = to.toISOString();
 
-    fetch(`/api/telemetry?tokenId=${tokenId}&from=${fromStr}&to=${toStr}&interval=${intervalStr}&slim=1`)
+    fetch(`/api/telemetry?tokenId=${tokenId}&from=${fromStr}&to=${toStr}&interval=1h&slim=1`)
       .then((r) => r.json())
-      .then((d: Signal[]) => Array.isArray(d) ? setSessions(buildSessions(d, intervalMs)) : setSessions([]))
+      .then((d: Signal[]) => Array.isArray(d) ? setSessions(buildSessions(d)) : setSessions([]))
       .catch(() => setSessions([]))
       .finally(() => setLoadingTrips(false));
   }, []);
