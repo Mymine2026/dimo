@@ -181,7 +181,7 @@ function buildSessions(signals: Signal[]): TripSession[] {
 async function reverseGeocode(lat: number, lon: number): Promise<string> {
   const res = await fetch(
     `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
-    { headers: { "Accept-Language": "it", "User-Agent": "MyMine-Fleet/1.0" } }
+    { headers: { "Accept-Language": "it", "User-Agent": "Conexo-Fleet/1.0" } }
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const d = await res.json();
@@ -498,7 +498,7 @@ export default function AnalyticsPage() {
 
       {/* ── Header ── */}
       <div className="mb-5">
-        <p className="font-bold text-white" style={{ fontSize: 16, lineHeight: 1 }}>MyMine</p>
+        <img src="/conexo-logo.png" alt="Conexo Technologies" style={{ height: 32 }} />
         <p style={{ fontSize: 11, color: "#8e9192", marginTop: 2 }}>Vehicle Intelligence</p>
       </div>
       <h1 className="font-bold text-white mb-4" style={{ fontSize: 28 }}>Analytics</h1>

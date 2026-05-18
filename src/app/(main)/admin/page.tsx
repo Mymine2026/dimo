@@ -636,7 +636,7 @@ export default function AdminPage() {
 
       {/* header */}
       <div className="mb-2">
-        <p className="font-bold text-white" style={{ fontSize: 16, lineHeight: 1 }}>MyMine</p>
+        <img src="/conexo-logo.png" alt="Conexo Technologies" style={{ height: 32 }} />
         <p style={{ fontSize: 11, color: "#8e9192", marginTop: 2 }}>Vehicle Intelligence</p>
       </div>
       <div className="flex items-center justify-between mb-6">

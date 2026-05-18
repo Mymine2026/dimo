@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "MyMine — Vehicle Intelligence",
+  title: "Conexo Fleet Intelligence",
   description: "Monitor your DIMO-connected vehicles",
 };
 

@@ -36,17 +36,7 @@ export default function LoginPage() {
     >
       {/* ── Logo top-left ── */}
       <div className="flex items-center gap-2.5 mb-12">
-        <div
-          className="flex items-center justify-center"
-          style={{ width: 40, height: 40, background: "#ffffff", borderRadius: 12 }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h14l4 4v4a2 2 0 0 1-2 2h-2" />
-            <circle cx="7.5" cy="17.5" r="2.5" />
-            <circle cx="17.5" cy="17.5" r="2.5" />
-          </svg>
-        </div>
-        <span className="font-bold text-white" style={{ fontSize: 18 }}>MyMine</span>
+        <img src="/conexo-logo.png" alt="Conexo Technologies" style={{ height: 40 }} />
       </div>
 
       {/* ── Heading ── */}
@@ -148,7 +138,7 @@ export default function LoginPage() {
       </form>
 
       <p style={{ fontSize: 12, color: "#3a3b3f", marginTop: "auto", paddingTop: 40, textAlign: "center" }}>
-        © {new Date().getFullYear()} MyMine · Powered by DIMO
+        © 2026 Conexo Technologies
       </p>
     </div>
   );
