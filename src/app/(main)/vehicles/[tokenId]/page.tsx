@@ -722,6 +722,7 @@ export default function VehicleDetailPage() {
                 allLocations={locations}
                 recentLocations={gpsTrack}
                 lastKnownPosition={latest?.currentLocationCoordinates ?? undefined}
+                isParked={ignition != null && Number(ignition) === 0 && (speed === 0 || speed == null)}
                 height="350px"
               />
             </div>

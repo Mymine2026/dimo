@@ -165,22 +165,30 @@ function buildSessions(signals: Signal[], intervalMs = 60 * 60 * 1000): TripSess
 
         let km: number | null = null;
         let kmEstimated = false;
-        const firstOdo = chunk.find(s => s.odometer != null)?.odometer ?? null;
-        const lastOdo  = [...chunk].reverse().find(s => s.odometer != null)?.odometer ?? null;
-        if (firstOdo != null && lastOdo != null) {
-          const delta = lastOdo - firstOdo;
-          if (delta > 0 && delta <= 500) km = Math.round(delta);
-        }
 
-        if (km == null) {
-          let kmEst = 0;
-          for (let j = 1; j < chunk.length; j++) {
-            const v0 = chunk[j - 1].speed ?? 0;
-            const v1 = chunk[j].speed ?? 0;
-            const dtMin = (new Date(chunk[j].timestamp).getTime() - new Date(chunk[j - 1].timestamp).getTime()) / 60_000;
-            kmEst += ((v0 + v1) / 2) * (dtMin / 60);
+        // Speed-based integration (trapezoidal) — primary method, immune to odometer jumps
+        let kmEst = 0;
+        for (let j = 1; j < chunk.length; j++) {
+          const v0 = chunk[j - 1].speed ?? 0;
+          const v1 = chunk[j].speed ?? 0;
+          const dtH = (new Date(chunk[j].timestamp).getTime() - new Date(chunk[j - 1].timestamp).getTime()) / 3_600_000;
+          kmEst += ((v0 + v1) / 2) * dtH;
+        }
+        if (kmEst > 0) { km = Math.round(kmEst); kmEstimated = true; }
+
+        // Odometer override — only when readings are monotonically increasing,
+        // no single consecutive jump > 200 km, and total delta < 800 km
+        const odoPoints = chunk.filter(s => s.odometer != null);
+        if (odoPoints.length >= 2) {
+          let odoValid = true;
+          for (let j = 1; j < odoPoints.length; j++) {
+            const d = odoPoints[j].odometer! - odoPoints[j - 1].odometer!;
+            if (d < 0 || d > 200) { odoValid = false; break; }
           }
-          if (kmEst > 0) { km = Math.round(kmEst); kmEstimated = true; }
+          if (odoValid) {
+            const totalOdo = odoPoints[odoPoints.length - 1].odometer! - odoPoints[0].odometer!;
+            if (totalOdo > 0 && totalOdo < 800) { km = Math.round(totalOdo); kmEstimated = false; }
+          }
         }
 
         const startCoords = chunk.find(s => s.location?.latitude != null)?.location ?? null;
@@ -227,7 +235,12 @@ function groupByDay(sessions: TripSession[]): DayGroup[] {
     g.sessions.push(s);
     if (s.km != null) g.totalKm = (g.totalKm ?? 0) + s.km;
   }
-  return Array.from(map.values());
+  const result = Array.from(map.values());
+  // Discard daily totals > 1500 km — physically impossible for a van in 24 h
+  for (const g of result) {
+    if (g.totalKm != null && g.totalKm > 1500) g.totalKm = null;
+  }
+  return result;
 }
 
 function fmtDur(min: number) {

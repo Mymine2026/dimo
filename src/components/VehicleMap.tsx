@@ -35,6 +35,8 @@ interface Props {
   recentLocations: LocationPoint[];
   /** Last known position from /api/latest — shown as a parking marker when no track data */
   lastKnownPosition?: { latitude: number; longitude: number; timestamp: string };
+  /** True when speed=0 and ignition=OFF — adds a parking marker even in route mode */
+  isParked?: boolean;
   height?: string;
 }
 
@@ -57,7 +59,7 @@ function fmtTime(ts: string) {
 }
 
 
-export function VehicleMap({ allLocations, recentLocations, lastKnownPosition, height = "300px" }: Props) {
+export function VehicleMap({ allLocations, recentLocations, lastKnownPosition, isParked, height = "300px" }: Props) {
   const [mode, setMode] = useState<MapMode>("heatmap");
   const modeRef     = useRef<MapMode>("heatmap");
   const mapRef      = useRef<HTMLDivElement>(null);
@@ -113,20 +115,24 @@ export function VehicleMap({ allLocations, recentLocations, lastKnownPosition, h
 
       if (!isMounted) return;
 
-      // ── Parking-only mode: no track data, just show last known position ──
-      if (parkingOnly) {
-        const lkp = lastKnownPosition!;
+      // ── Shared helper: parking marker (dark-blue circle with white P) ──
+      function addParkingMarker(lkp: { latitude: number; longitude: number; timestamp: string }) {
         const d = new Date(lkp.timestamp);
-        const label = `${d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`;
+        const tsLabel = `${d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`;
         L.marker([lkp.latitude, lkp.longitude], {
           icon: L.divIcon({
-            html: `<div style="width:36px;height:36px;background:#1a1b1e;border:2px solid #60a5fa;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 2px 8px rgba(0,0,0,0.6)">🅿️</div>`,
-            iconSize: [36, 36],
-            iconAnchor: [18, 36],
+            html: `<div style="width:30px;height:30px;border-radius:50%;background:#1e3a5f;border:2.5px solid #3b82f6;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,0.7)">P</div>`,
+            iconSize: [30, 30],
+            iconAnchor: [15, 30],
             className: "",
           }),
-        }).bindPopup(`Ultima posizione nota · ${label}`).addTo(map);
-        map.setView([lkp.latitude, lkp.longitude], 14);
+        }).bindPopup(`Veicolo parcheggiato · ultima posizione · ${tsLabel}`).addTo(map);
+      }
+
+      // ── Parking-only mode: no track data, just show last known position ──
+      if (parkingOnly) {
+        addParkingMarker(lastKnownPosition!);
+        map.setView([lastKnownPosition!.latitude, lastKnownPosition!.longitude], 15);
         return;
       }
 
@@ -187,6 +193,11 @@ export function VehicleMap({ allLocations, recentLocations, lastKnownPosition, h
         }),
       }).bindPopup(`Ultima posizione: ${fmtTime(last.timestamp)}`).addTo(map);
 
+      // ── Parking marker when vehicle is stationary ──
+      if (isParked && lastKnownPosition) {
+        addParkingMarker(lastKnownPosition);
+      }
+
       // ── Fit bounds on all GPS points ──
       const allLatLngs = heatPts.map(p => [p.latitude, p.longitude] as [number, number]);
       map.fitBounds(L.latLngBounds(allLatLngs), { padding: [24, 24] });
@@ -197,7 +208,7 @@ export function VehicleMap({ allLocations, recentLocations, lastKnownPosition, h
       if (mapInstance.current) { mapInstance.current.remove(); mapInstance.current = null; }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(allLocations), JSON.stringify(recentLocations), JSON.stringify(lastKnownPosition)]);
+  }, [JSON.stringify(allLocations), JSON.stringify(recentLocations), JSON.stringify(lastKnownPosition), isParked]);
 
   // ── Mode toggle: swap layers without recreating the map ──────────────────────
   useEffect(() => {
