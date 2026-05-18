@@ -27,26 +27,22 @@ interface MaintenanceRecord {
 
 interface Signal {
   timestamp: string;
-  speed: number | null;
-  speedMax?: number | null;
-  odometer: number | null;
   location?: { latitude: number; longitude: number } | null;
 }
 
 interface TripSession {
   startTime: Date;
   endTime: Date;
-  km: number | null;
-  kmEstimated: boolean;
+  km: number;
   durationMin: number;
-  startCoords: { latitude: number; longitude: number } | null;
-  endCoords:   { latitude: number; longitude: number } | null;
+  startCoords: { latitude: number; longitude: number };
+  endCoords:   { latitude: number; longitude: number };
 }
 
 interface DayGroup {
   label: string;
   isoDate: string;
-  totalKm: number | null;
+  totalKm: number;
   sessions: TripSession[];
 }
 
@@ -89,7 +85,7 @@ function periodTitle(period: Period): string {
 // Genera una barra per ogni giorno del periodo (inclusi giorni a 0 km)
 function buildChartData(period: Period, days: DayGroup[]) {
   const { from, to } = getPeriodRange(period);
-  const dayMap = new Map(days.map(d => [d.isoDate, d.totalKm ?? 0]));
+  const dayMap = new Map(days.map(d => [d.isoDate, d.totalKm]));
 
   const result: { label: string; fullLabel: string; isoDate: string; km: number }[] = [];
   const cur = new Date(from);
@@ -114,87 +110,56 @@ function buildChartData(period: Period, days: DayGroup[]) {
 
 // ─── trip logic ───────────────────────────────────────────────────────────────
 
-function defrost(signals: Signal[]): Signal[] {
-  const out = signals.map(s => ({ ...s }));
-  let i = 0;
-  while (i < out.length) {
-    const spd = out[i].speed ?? 0;
-    if (spd <= 0) { i++; continue; }
-    let j = i;
-    while (
-      j < out.length &&
-      (out[j].speed ?? 0) === spd &&
-      (out[j].speedMax == null || out[j].speedMax === spd)
-    ) j++;
-    if (j - i >= 2) {
-      for (let k = i; k < j; k++) out[k].speed = 0;
-    }
-    i = j > i ? j : i + 1;
-  }
-  return out;
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function buildSessions(signals: Signal[], intervalMs = 60 * 60 * 1000): TripSession[] {
-  if (!signals.length) return [];
-  // gap threshold: at least 1.5× the bucket interval, minimum 2 h
-  const gapMs = Math.max(2 * 60 * 60 * 1000, 1.5 * intervalMs);
-  const sorted = defrost(
-    [...signals].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-  );
+function buildSessions(signals: Signal[], intervalMs = 10 * 60_000): TripSession[] {
+  // Use only signals with valid GPS coordinates
+  const gps = [...signals]
+    .filter(s => s.location?.latitude != null && s.location?.longitude != null)
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  if (gps.length < 2) return [];
+
+  // Gap threshold: 30 min minimum, scaled up for coarser intervals
+  const GAP_MS = Math.max(30 * 60_000, 2 * intervalMs);
   const sessions: TripSession[] = [];
   let start = 0;
 
-  for (let i = 1; i <= sorted.length; i++) {
-    const isLast = i === sorted.length;
+  for (let i = 1; i <= gps.length; i++) {
+    const isLast = i === gps.length;
     const gapBreak =
       !isLast &&
-      new Date(sorted[i].timestamp).getTime() - new Date(sorted[i - 1].timestamp).getTime() > gapMs;
-    const trailingZeros =
-      !isLast &&
-      i >= 3 &&
-      [sorted[i - 3], sorted[i - 2], sorted[i - 1]].every((s) => (s.speed ?? 0) === 0);
+      new Date(gps[i].timestamp).getTime() - new Date(gps[i - 1].timestamp).getTime() > GAP_MS;
 
-    if (isLast || gapBreak || trailingZeros) {
-      const chunk = sorted.slice(start, i);
-      const hasMovement = chunk.some((s) => (s.speed ?? 0) > 0);
-
-      if (hasMovement) {
-        const t0 = new Date(chunk[0].timestamp);
-        const t1 = new Date(chunk[chunk.length - 1].timestamp);
-        const dur = Math.round((t1.getTime() - t0.getTime()) / 60_000);
-
-        let km: number | null = null;
-        let kmEstimated = false;
-
-        // Speed-based integration (trapezoidal) — primary method, immune to odometer jumps
-        let kmEst = 0;
+    if (isLast || gapBreak) {
+      const chunk = gps.slice(start, i);
+      if (chunk.length >= 2) {
+        let km = 0;
         for (let j = 1; j < chunk.length; j++) {
-          const v0 = chunk[j - 1].speed ?? 0;
-          const v1 = chunk[j].speed ?? 0;
-          const dtH = (new Date(chunk[j].timestamp).getTime() - new Date(chunk[j - 1].timestamp).getTime()) / 3_600_000;
-          kmEst += ((v0 + v1) / 2) * dtH;
+          const d = haversineKm(
+            chunk[j - 1].location!.latitude, chunk[j - 1].location!.longitude,
+            chunk[j].location!.latitude,     chunk[j].location!.longitude,
+          );
+          if (d <= 50) km += d; // discard GPS anomalies > 50 km
         }
-        if (kmEst > 0) { km = Math.round(kmEst); kmEstimated = true; }
-
-        // Odometer override — only when readings are monotonically increasing,
-        // no single consecutive jump > 200 km, and total delta < 800 km
-        const odoPoints = chunk.filter(s => s.odometer != null);
-        if (odoPoints.length >= 2) {
-          let odoValid = true;
-          for (let j = 1; j < odoPoints.length; j++) {
-            const d = odoPoints[j].odometer! - odoPoints[j - 1].odometer!;
-            if (d < 0 || d > 200) { odoValid = false; break; }
-          }
-          if (odoValid) {
-            const totalOdo = odoPoints[odoPoints.length - 1].odometer! - odoPoints[0].odometer!;
-            if (totalOdo > 0 && totalOdo < 800) { km = Math.round(totalOdo); kmEstimated = false; }
-          }
+        if (km > 0.5) {
+          const t0 = new Date(chunk[0].timestamp);
+          const t1 = new Date(chunk[chunk.length - 1].timestamp);
+          sessions.push({
+            startTime:   t0,
+            endTime:     t1,
+            km,
+            durationMin: Math.round((t1.getTime() - t0.getTime()) / 60_000),
+            startCoords: chunk[0].location!,
+            endCoords:   chunk[chunk.length - 1].location!,
+          });
         }
-
-        const startCoords = chunk.find(s => s.location?.latitude != null)?.location ?? null;
-        const endCoords   = [...chunk].reverse().find(s => s.location?.latitude != null)?.location ?? null;
-
-        if (dur > 5) sessions.push({ startTime: t0, endTime: t1, km, kmEstimated, durationMin: dur, startCoords, endCoords });
       }
       start = i;
     }
@@ -230,17 +195,13 @@ function groupByDay(sessions: TripSession[]): DayGroup[] {
     const label = s.startTime.toLocaleDateString("it-IT", {
       weekday: "short", day: "2-digit", month: "2-digit",
     });
-    if (!map.has(iso)) map.set(iso, { label, isoDate: iso, totalKm: null, sessions: [] });
+    if (!map.has(iso)) map.set(iso, { label, isoDate: iso, totalKm: 0, sessions: [] });
     const g = map.get(iso)!;
     g.sessions.push(s);
-    if (s.km != null) g.totalKm = (g.totalKm ?? 0) + s.km;
+    g.totalKm += s.km;
   }
-  const result = Array.from(map.values());
-  // Discard daily totals > 1500 km — physically impossible for a van in 24 h
-  for (const g of result) {
-    if (g.totalKm != null && g.totalKm > 1500) g.totalKm = null;
-  }
-  return result;
+  // Discard daily totals > 1200 km — physically impossible for a van in 24 h
+  return Array.from(map.values()).filter(g => g.totalKm <= 1200);
 }
 
 function fmtDur(min: number) {
@@ -419,8 +380,8 @@ export default function AnalyticsPage() {
 
     fetch(`/api/telemetry?tokenId=${tokenId}&from=${fromStr}&to=${toStr}&interval=${intervalStr}&slim=1`)
       .then((r) => r.json())
-      .then((d: Signal[]) => Array.isArray(d) ? setSessions(buildSessions(d, intervalMs)) : null)
-      .catch(() => {})
+      .then((d: Signal[]) => Array.isArray(d) ? setSessions(buildSessions(d, intervalMs)) : setSessions([]))
+      .catch(() => setSessions([]))
       .finally(() => setLoadingTrips(false));
   }, []);
 
@@ -499,8 +460,8 @@ export default function AnalyticsPage() {
   const selectedVehicle = vehicles.find((v) => v.tokenId === selectedId);
 
   // ── stats ──
-  const totalKm    = sessions.reduce((s, t) => s + (t.km ?? 0), 0);
-  const activeDays = days.filter(d => d.totalKm != null && d.totalKm > 0).length;
+  const totalKm    = sessions.reduce((s, t) => s + t.km, 0);
+  const activeDays = days.filter(d => d.totalKm > 0).length;
   const avgKmDay   = activeDays > 0 ? Math.round(totalKm / activeDays) : 0;
 
   // ── chart data ──
@@ -775,7 +736,7 @@ export default function AnalyticsPage() {
                     <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#8e9192" }}>
                       {day.label}
                     </p>
-                    {day.totalKm != null && (
+                    {day.totalKm > 0 && (
                       <p className="text-xs font-semibold text-white">
                         {Math.round(day.totalKm).toLocaleString()} km tot.
                       </p>
@@ -811,15 +772,9 @@ export default function AnalyticsPage() {
                               </div>
                             </div>
                             <div className="flex flex-col items-end justify-center shrink-0 ml-1" style={{ gap: 2 }}>
-                              {s.km != null && (
-                                <span
-                                  className="text-sm font-bold leading-none"
-                                  style={{ color: s.kmEstimated ? "#8e9192" : "#ffffff" }}
-                                  title={s.kmEstimated ? "Stima da velocità (odometro non disponibile)" : undefined}
-                                >
-                                  {s.kmEstimated ? "~" : ""}{Math.round(s.km)} km
-                                </span>
-                              )}
+                              <span className="text-sm font-bold leading-none text-white">
+                                {Math.round(s.km)} km
+                              </span>
                               <span className="text-xs" style={{ color: "#6b7280" }}>{fmtDur(s.durationMin)}</span>
                             </div>
                           </div>
