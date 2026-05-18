@@ -119,57 +119,56 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function calcSessionKm(points: Signal[]): number {
-  let km = 0;
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1];
-    const curr = points[i];
-    if (!prev.location || !curr.location) continue;
-    const ms = new Date(curr.timestamp).getTime() - new Date(prev.timestamp).getTime();
-    const d  = haversineKm(
-      prev.location.latitude, prev.location.longitude,
-      curr.location.latitude, curr.location.longitude,
-    );
-    // Discard GPS jumps implying > 200 km/h
-    if (ms > 0 && (d / (ms / 3_600_000)) <= 200) km += d;
-  }
-  return km;
-}
-
 function buildSessions(signals: Signal[]): TripSession[] {
   const sorted = [...signals].sort(
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   );
+  if (sorted.length < 2) return [];
 
   const sessions: TripSession[] = [];
   let current: Signal[] = [];
+  let currentKm = 0;
 
   const flush = () => {
-    if (current.length >= 2) {
-      const km = calcSessionKm(current);
-      if (km > 1) {
-        const t0 = new Date(current[0].timestamp);
-        const t1 = new Date(current[current.length - 1].timestamp);
-        const startCoords = current.find(s => s.location?.latitude != null)?.location ?? null;
-        const endCoords   = [...current].reverse().find(s => s.location?.latitude != null)?.location ?? null;
-        if (startCoords && endCoords) {
-          sessions.push({
-            startTime:   t0,
-            endTime:     t1,
-            km,
-            durationMin: Math.round((t1.getTime() - t0.getTime()) / 60_000),
-            startCoords,
-            endCoords,
-          });
-        }
+    if (current.length >= 2 && currentKm > 1) {
+      const t0 = new Date(current[0].timestamp);
+      const t1 = new Date(current[current.length - 1].timestamp);
+      const startCoords = current.find(s => s.location?.latitude != null)?.location ?? null;
+      const endCoords   = [...current].reverse().find(s => s.location?.latitude != null)?.location ?? null;
+      if (startCoords && endCoords) {
+        sessions.push({
+          startTime:   t0,
+          endTime:     t1,
+          km:          currentKm,
+          durationMin: Math.round((t1.getTime() - t0.getTime()) / 60_000),
+          startCoords,
+          endCoords,
+        });
       }
     }
     current = [];
+    currentKm = 0;
   };
 
-  for (const s of sorted) {
-    if ((s.speed ?? 0) > 2) {
-      current.push(s);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    const ms = new Date(curr.timestamp).getTime() - new Date(prev.timestamp).getTime();
+
+    const gpsKm = prev.location && curr.location
+      ? haversineKm(prev.location.latitude, prev.location.longitude, curr.location.latitude, curr.location.longitude)
+      : 0;
+    const impliedKmh = ms > 0 ? gpsKm / (ms / 3_600_000) : Infinity;
+    const anomalous  = impliedKmh > 200;
+
+    // Movement detected by speed (Trafic) OR GPS displacement ≥ 0.5 km (Iveco / low-speed reporters)
+    const gpsMoving   = gpsKm >= 0.5 && !anomalous;
+    const speedMoving = ((prev.speed ?? 0) > 2 || (curr.speed ?? 0) > 2) && !anomalous;
+
+    if (speedMoving || gpsMoving) {
+      if (current.length === 0) current.push(prev);
+      current.push(curr);
+      currentKm += gpsKm;
     } else {
       flush();
     }
