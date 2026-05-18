@@ -194,30 +194,39 @@ export default function VehiclesPage() {
   useEffect(() => {
     if (status !== "authenticated") return;
     fetch("/api/vehicles")
-      .then((res) => res.json().then((data: unknown) => ({ ok: res.ok, data })))
-      .then(({ ok, data }) => {
-        if (!ok) throw new Error((data as { error?: string }).error ?? "Errore caricamento");
-        const vs = data as Vehicle[];
+      .then(async (res) => {
+        const text = await res.text();
+        if (!text) throw new Error("Risposta vuota dal server");
+        const data = JSON.parse(text) as unknown;
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? "Errore caricamento");
+        return data as Vehicle[];
+      })
+      .then((vs) => {
         setVehicles(vs);
-        // Fetch alerts for all vehicles in parallel (fire-and-forget)
+        // Fetch alerts + positions for all vehicles in parallel (fire-and-forget)
         if (!alertsFetched.current) {
           alertsFetched.current = true;
           Promise.all(
             vs.map(v =>
               fetch(`/api/latest?tokenId=${v.tokenId}`)
-                .then(r => r.json())
-                .then((d: Record<string, unknown>) => ({
-                  tokenId: v.tokenId,
-                  adBlue: (d.powertrainCombustionEngineDieselExhaustFluidLevel as number | null) ?? null,
-                  dtcCount: (d.obdStatusDTCCount as number | null) ?? null,
-                  position: (d.currentLocationCoordinates as { latitude: number; longitude: number; timestamp: string } | null) ?? null,
-                }))
+                .then(async r => {
+                  const text = await r.text();
+                  if (!text) return null;
+                  const d = JSON.parse(text) as Record<string, unknown>;
+                  if (!r.ok || d.error) return null;
+                  return {
+                    tokenId: v.tokenId,
+                    adBlue: (d.powertrainCombustionEngineDieselExhaustFluidLevel as number | null) ?? null,
+                    dtcCount: (d.obdStatusDTCCount as number | null) ?? null,
+                    position: (d.currentLocationCoordinates as { latitude: number; longitude: number; timestamp: string } | null) ?? null,
+                  };
+                })
                 .catch(() => null)
             )
           ).then(results => {
             const m = new Map<number, VehicleAlerts>();
             for (const r of results) {
-              if (r) m.set(r.tokenId, { adBlue: r.adBlue, dtcCount: r.dtcCount });
+              if (r) m.set(r.tokenId, { adBlue: r.adBlue, dtcCount: r.dtcCount, position: r.position });
             }
             setLatestMap(m);
           });
