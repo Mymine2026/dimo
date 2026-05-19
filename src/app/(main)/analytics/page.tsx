@@ -161,11 +161,16 @@ function buildSessions(signals: Signal[]): TripSession[] {
     const impliedKmh = ms > 0 ? gpsKm / (ms / 3_600_000) : Infinity;
     const anomalous  = impliedKmh > 200;
 
-    // Movement detected by speed (Trafic) OR GPS displacement ≥ 0.5 km (Iveco / low-speed reporters)
-    const gpsMoving   = gpsKm >= 0.5 && !anomalous;
+    // Movement detected by speed (Trafic) OR GPS displacement ≥ 0.1 km (Iveco / low-speed reporters)
+    const gpsMoving   = gpsKm >= 0.1 && !anomalous;
     const speedMoving = ((prev.speed ?? 0) > 2 || (curr.speed ?? 0) > 2) && !anomalous;
 
-    if (speedMoving || gpsMoving) {
+    const distanceFromStart = current.length > 0 && curr.location && current[0].location
+      ? haversineKm(current[0].location.latitude, current[0].location.longitude,
+                    curr.location.latitude, curr.location.longitude)
+      : 0;
+
+    if (speedMoving || gpsMoving || distanceFromStart > 0.3) {
       if (current.length === 0) current.push(prev);
       current.push(curr);
       currentKm += gpsKm;
