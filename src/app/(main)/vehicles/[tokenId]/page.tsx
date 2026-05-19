@@ -74,6 +74,14 @@ class ErrorBoundary extends Component<
   }
 }
 
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function extractNum(raw: unknown): number | null {
   if (raw == null) return null;
   if (typeof raw === "number") return isFinite(raw) ? raw : null;
@@ -361,13 +369,30 @@ export default function VehicleDetailPage() {
 
   const dtcCount = latest?.obdStatusDTCCount ?? null;
 
-  // Punteggio di guida: basato sulla velocità media in marcia (solo campioni > 5 km/h).
-  // Ottimale per veicoli commerciali: 70-85 km/h. Min 5 campioni per mostrare il dato.
-  const movingSpeeds  = signals.map(s => s.speed).filter((v): v is number => v != null && v > 5);
-  const avgSpeed      = movingSpeeds.length >= 5
+  // Punteggio di guida: preferisce la velocità reale; fallback GPS se il sensore riporta sempre 0
+  // (es. IVECO/dispositivi che non trasmettono speed). Stima la velocità da distanza/tempo tra punti.
+  const movingBySpeed = signals.map(s => s.speed).filter((v): v is number => v != null && v > 5);
+  const movingSpeeds: number[] = (() => {
+    if (movingBySpeed.length >= 5) return movingBySpeed;
+    const gps: number[] = [];
+    for (let i = 1; i < signals.length; i++) {
+      const a = signals[i - 1];
+      const b = signals[i];
+      if (a.location?.latitude != null && b.location?.latitude != null) {
+        const distKm = haversineKm(a.location.latitude, a.location.longitude, b.location.latitude, b.location.longitude);
+        if (distKm > 0.1) {
+          const dtH = (new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) / 3_600_000;
+          const est = dtH > 0 ? distKm / dtH : 0;
+          if (est > 5 && est < 200) gps.push(est);
+        }
+      }
+    }
+    return gps;
+  })();
+  const avgSpeed     = movingSpeeds.length >= 2
     ? movingSpeeds.reduce((a, b) => a + b, 0) / movingSpeeds.length
     : null;
-  const drivingScore  = avgSpeed != null
+  const drivingScore = avgSpeed != null
     ? Math.min(100, Math.max(0, Math.round(100 - Math.abs(avgSpeed - 78) * 1.1)))
     : null;
 
