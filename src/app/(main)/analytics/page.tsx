@@ -83,6 +83,15 @@ function periodTitle(period: Period): string {
   return "Mese corrente";
 }
 
+// Chiave data del calendario LOCALE (non UTC): evita lo sfasamento di un giorno
+// tra le barre del grafico e i viaggi quando il browser è in un fuso ≠ UTC.
+function localISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 // Genera una barra per ogni giorno del periodo (inclusi giorni a 0 km)
 function buildChartData(period: Period, days: DayGroup[]) {
   const { from, to } = getPeriodRange(period);
@@ -95,7 +104,7 @@ function buildChartData(period: Period, days: DayGroup[]) {
   end.setHours(0, 0, 0, 0);
 
   while (cur <= end) {
-    const iso = cur.toISOString().slice(0, 10);
+    const iso = localISODate(cur);
     const weekday = cur.toLocaleDateString("it-IT", { weekday: "short" });
     const dateStr = `${cur.getDate()}/${cur.getMonth() + 1}`;
     result.push({
@@ -124,6 +133,11 @@ function buildSessions(signals: Signal[]): TripSession[] {
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   );
   if (sorted.length < 2) return [];
+
+  // Con campionamento orario (interval=1h) un gap più ampio di questo indica un
+  // confine di viaggio (veicolo spento / dati mancanti / sosta): spezza la sessione.
+  // Senza questo controllo una mega-sessione poteva durare centinaia di ore.
+  const MAX_GAP_MS = 90 * 60_000; // 1,5h
 
   const sessions: TripSession[] = [];
   let current: Signal[] = [];
@@ -165,12 +179,12 @@ function buildSessions(signals: Signal[]): TripSession[] {
     const gpsMoving   = gpsKm >= 0.1 && !anomalous;
     const speedMoving = ((prev.speed ?? 0) > 2 || (curr.speed ?? 0) > 2) && !anomalous;
 
-    const distanceFromStart = current.length > 0 && curr.location && current[0].location
-      ? haversineKm(current[0].location.latitude, current[0].location.longitude,
-                    curr.location.latitude, curr.location.longitude)
-      : 0;
+    // Un gap temporale ampio chiude sempre la sessione, anche se i due punti sono
+    // lontani (altrimenti due punti a giorni di distanza verrebbero fusi in un
+    // viaggio dalla durata impossibile).
+    const gapTooLarge = ms > MAX_GAP_MS;
 
-    if (speedMoving || gpsMoving || distanceFromStart > 0.3) {
+    if (!gapTooLarge && (speedMoving || gpsMoving)) {
       if (current.length === 0) current.push(prev);
       current.push(curr);
       currentKm += gpsKm;
@@ -207,7 +221,7 @@ function groupByDay(sessions: TripSession[]): DayGroup[] {
   for (const s of [...sessions].sort(
     (a, b) => b.startTime.getTime() - a.startTime.getTime()
   )) {
-    const iso = s.startTime.toISOString().slice(0, 10);
+    const iso = localISODate(s.startTime);
     const label = s.startTime.toLocaleDateString("it-IT", {
       weekday: "short", day: "2-digit", month: "2-digit",
     });
