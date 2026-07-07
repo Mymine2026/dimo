@@ -356,6 +356,23 @@ export default function VehicleDetailPage() {
     ? Math.round(fuelWithAcc.at(-1)!.accumulatedConsumption! - fuelWithAcc[0]!.accumulatedConsumption!)
     : null;
 
+  // Fallback per i veicoli che non riportano accumulatedConsumption (J1939) —
+  // es. Renault Trafic. Stima il consumo dal livello assoluto del serbatoio,
+  // sommando solo i cali tra letture consecutive: un aumento indica un
+  // rifornimento e va ignorato, non sottratto come "consumo negativo".
+  const fuelAbsSignals = signals.filter(s => s.fuelAbsolute != null);
+  let tankFuelDelta: number | null = null;
+  if (periodFuelDelta == null && fuelAbsSignals.length >= 2) {
+    let consumed = 0;
+    for (let i = 1; i < fuelAbsSignals.length; i++) {
+      const diff = fuelAbsSignals[i - 1].fuelAbsolute! - fuelAbsSignals[i].fuelAbsolute!;
+      if (diff > 0) consumed += diff;
+    }
+    tankFuelDelta = Math.round(consumed);
+  }
+  const displayFuelDelta   = periodFuelDelta ?? tankFuelDelta;
+  const fuelDeltaEstimated = periodFuelDelta == null && tankFuelDelta != null;
+
   // Filter each chart to its non-null data points — avoids gaps from unsampled intervals
   const speedSignals    = signals;                                         // speed always present (0 when parked)
   const fuelSignals     = signals.filter(s => s.fuelLevel != null);
@@ -586,11 +603,13 @@ export default function VehicleDetailPage() {
                 subtitle="Contatore totale · non varia col periodo"
               />
             )}
-            {periodFuelDelta != null && periodFuelDelta > 0 && (
+            {displayFuelDelta != null && displayFuelDelta > 0 && (
               <MetricCard
                 label="Consumo nel periodo"
-                value={`${periodFuelDelta.toLocaleString()} L`}
-                info={`Variazione nel periodo selezionato (${range})`}
+                value={`${displayFuelDelta.toLocaleString()} L`}
+                info={fuelDeltaEstimated
+                  ? `Stima da livello serbatoio (${range}) · sensore senza contatore consumo`
+                  : `Variazione nel periodo selezionato (${range})`}
               />
             )}
           </div>
