@@ -51,6 +51,7 @@ type DbVehicleRow = {
 const OWNER_ADDRESSES = [
   process.env.DIMO_WALLET_ADDRESS,
   process.env.DIMO_WALLET_ADDRESS_2,
+  process.env.DIMO_WALLET_ADDRESS_3,
 ].filter(Boolean) as string[];
 
 async function fetchVehiclesForOwner(owner: string): Promise<DimoVehicle[]> {
@@ -113,7 +114,11 @@ export async function GET(req: Request) {
     const { rows: allDbRows } = await pool.query<DbVehicleRow>(
       "SELECT token_id, name, plate, company_id FROM vehicles"
     );
-    return NextResponse.json(mergeVehicles(dimoVehicles, allDbRows));
+    // Solo i veicoli registrati in flotta — esclude i mezzi di test presenti
+    // sul wallet DIMO ma mai aggiunti alla tabella vehicles (es. BMW X5).
+    const allowedTokenIds = new Set(allDbRows.map((r) => Number(r.token_id)));
+    const filteredDimo = dimoVehicles.filter((v) => allowedTokenIds.has(Number(v.tokenId)));
+    return NextResponse.json(mergeVehicles(filteredDimo, allDbRows));
   }
 
   let dbRows: DbVehicleRow[];
