@@ -66,10 +66,14 @@ function getPeriodRange(period: Period): { from: Date; to: Date } {
     return { from, to: now };
   }
   if (period === "7gg") {
-    return { from: new Date(Date.now() - 7 * 24 * 3_600_000), to: now };
+    const from = new Date(Date.now() - 7 * 24 * 3_600_000);
+    from.setHours(0, 0, 0, 0);
+    return { from, to: now };
   }
   if (period === "30gg") {
-    return { from: new Date(Date.now() - 30 * 24 * 3_600_000), to: now };
+    const from = new Date(Date.now() - 30 * 24 * 3_600_000);
+    from.setHours(0, 0, 0, 0);
+    return { from, to: now };
   }
   // mese corrente
   const from = new Date(now.getFullYear(), now.getMonth(), 1);
