@@ -29,6 +29,7 @@ interface Signal {
   timestamp: string;
   speed?: number | null;
   location?: { latitude: number; longitude: number } | null;
+  odometer?: number | null;
 }
 
 interface TripSession {
@@ -148,16 +149,26 @@ function buildSessions(signals: Signal[]): TripSession[] {
   let currentKm = 0;
 
   const flush = () => {
-    if (current.length >= 2 && currentKm > 1) {
+    if (current.length >= 2) {
       const t0 = new Date(current[0].timestamp);
       const t1 = new Date(current[current.length - 1].timestamp);
       const startCoords = current.find(s => s.location?.latitude != null)?.location ?? null;
       const endCoords   = [...current].reverse().find(s => s.location?.latitude != null)?.location ?? null;
-      if (startCoords && endCoords) {
+      // L'odometro (quando disponibile) è la distanza reale percorsa. La somma
+      // delle distanze haversine tra fix GPS orari sottostima molto su strade
+      // non rettilinee (es. tornanti/statali di montagna): misura la corda
+      // invece dell'arco. Usare l'odometro come fonte primaria e la somma GPS
+      // solo come fallback quando l'odometro non è disponibile per il veicolo.
+      const odoStart = current.find(s => s.odometer != null)?.odometer;
+      const odoEnd   = [...current].reverse().find(s => s.odometer != null)?.odometer;
+      const km = odoStart != null && odoEnd != null && odoEnd >= odoStart
+        ? odoEnd - odoStart
+        : currentKm;
+      if (km > 1 && startCoords && endCoords) {
         sessions.push({
           startTime:   t0,
           endTime:     t1,
-          km:          currentKm,
+          km,
           durationMin: Math.round((t1.getTime() - t0.getTime()) / 60_000),
           startCoords,
           endCoords,
