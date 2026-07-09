@@ -288,7 +288,7 @@ export default function VehiclesPage() {
       </div>
 
       {/* ── Title ── */}
-      <h1 className="font-bold text-white mb-4" style={{ fontSize: 28 }}>Fleet</h1>
+      <h1 className="font-bold text-white mb-4" style={{ fontSize: 28 }}>Flotta</h1>
 
       {/* ── Stats pills ── */}
       {!loading && !error && (

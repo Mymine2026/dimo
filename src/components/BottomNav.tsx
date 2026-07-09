@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 import { Truck, BarChart2, FileText, User } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/vehicles",  icon: Truck,     label: "Fleet"     },
-  { href: "/analytics", icon: BarChart2, label: "Analytics" },
-  { href: "/documents", icon: FileText,  label: "Documents" },
-  { href: "/profile",   icon: User,      label: "Profile"   },
+  { href: "/vehicles",  icon: Truck,     label: "Flotta"    },
+  { href: "/analytics", icon: BarChart2, label: "Dati"      },
+  { href: "/documents", icon: FileText,  label: "Documenti" },
+  { href: "/profile",   icon: User,      label: "Profilo"   },
 ] as const;
 
 export function BottomNav() {

@@ -535,7 +535,7 @@ export default function AnalyticsPage() {
         <img src="/conexo-logo.png" alt="Conexo Technologies" style={{ height: 32 }} />
         <p style={{ fontSize: 11, color: "#8e9192", marginTop: 2 }}>Vehicle Intelligence</p>
       </div>
-      <h1 className="font-bold text-white mb-4" style={{ fontSize: 28 }}>Analytics</h1>
+      <h1 className="font-bold text-white mb-4" style={{ fontSize: 28 }}>Dati</h1>
 
       {/* ── Vehicle picker ── */}
       {vehicles.length > 0 && (

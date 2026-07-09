@@ -373,6 +373,12 @@ export default function VehicleDetailPage() {
   const displayFuelDelta   = periodFuelDelta ?? tankFuelDelta;
   const fuelDeltaEstimated = periodFuelDelta == null && tankFuelDelta != null;
 
+  // Km percorsi nel periodo (delta odometro tra prima e ultima lettura valida)
+  const odoWithVal = signals.filter(s => s.odometer != null);
+  const periodKmDelta = odoWithVal.length >= 2
+    ? Math.round(odoWithVal.at(-1)!.odometer! - odoWithVal[0]!.odometer!)
+    : null;
+
   // Filter each chart to its non-null data points — avoids gaps from unsampled intervals
   const speedSignals    = signals;                                         // speed always present (0 when parked)
   const fuelSignals     = signals.filter(s => s.fuelLevel != null);
@@ -610,6 +616,13 @@ export default function VehicleDetailPage() {
                 info={fuelDeltaEstimated
                   ? `Stima da livello serbatoio (${range}) · sensore senza contatore consumo`
                   : `Variazione nel periodo selezionato (${range})`}
+              />
+            )}
+            {periodKmDelta != null && periodKmDelta > 0 && (
+              <MetricCard
+                label="Km nel periodo"
+                value={`${periodKmDelta.toLocaleString()} km`}
+                info={`Distanza percorsa nel periodo selezionato (${range})`}
               />
             )}
           </div>
