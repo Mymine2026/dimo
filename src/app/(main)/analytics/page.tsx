@@ -7,6 +7,7 @@ import {
 import {
   AlertTriangle, BarChart2, ChevronDown, Route, Wrench, X,
 } from "lucide-react";
+import type { TelemetryHistoryRow } from "@/types/dimo";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -139,9 +140,11 @@ function buildSessions(signals: Signal[]): TripSession[] {
   );
   if (sorted.length < 2) return [];
 
-  // Con campionamento orario (interval=1h) un gap più ampio di questo indica un
-  // confine di viaggio (veicolo spento / dati mancanti / sosta): spezza la sessione.
-  // Senza questo controllo una mega-sessione poteva durare centinaia di ore.
+  // Un gap più ampio di questo (sia a campionamento orario da DIMO live sui
+  // periodi precedenti l'inizio della raccolta locale, sia a 5 min dal DB)
+  // indica un confine di viaggio (veicolo spento / dati mancanti / sosta):
+  // spezza la sessione. Senza questo controllo una mega-sessione poteva
+  // durare centinaia di ore.
   const MAX_GAP_MS = 90 * 60_000; // 1,5h
 
   const sessions: TripSession[] = [];
@@ -210,6 +213,45 @@ function buildSessions(signals: Signal[]): TripSession[] {
   flush();
 
   return sessions;
+}
+
+// Prefer our own DB (raw 5-min points, no DIMO aggregation) for the portion of
+// the range it already covers; backfill anything earlier from DIMO live, same
+// merge strategy used for the GPS track in the vehicle detail page.
+async function loadTelemetrySignals(tokenId: number, from: Date, to: Date): Promise<Signal[]> {
+  const fromStr = from.toISOString();
+  const toStr   = to.toISOString();
+
+  let localSignals: Signal[] = [];
+  try {
+    const res  = await fetch(`/api/telemetry/history?tokenId=${tokenId}&from=${fromStr}&to=${toStr}`);
+    const data = await res.json();
+    if (res.ok && Array.isArray(data)) {
+      localSignals = (data as TelemetryHistoryRow[]).map((r) => ({
+        timestamp: r.timestamp,
+        speed: r.speed,
+        odometer: r.odometer_km,
+        location: r.latitude != null && r.longitude != null
+          ? { latitude: r.latitude, longitude: r.longitude }
+          : null,
+      }));
+    }
+  } catch { /* fall through — olderSignals below then covers the whole range */ }
+
+  const earliestLocal = localSignals[0]?.timestamp;
+  const gapRemains = !earliestLocal || new Date(earliestLocal).getTime() - from.getTime() > 15 * 60_000;
+
+  let olderSignals: Signal[] = [];
+  if (gapRemains) {
+    try {
+      const gapTo = earliestLocal ?? toStr;
+      const res  = await fetch(`/api/telemetry?tokenId=${tokenId}&from=${fromStr}&to=${gapTo}&interval=1h&slim=1`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) olderSignals = data as Signal[];
+    } catch { /* non-critical */ }
+  }
+
+  return [...olderSignals, ...localSignals];
 }
 
 async function reverseGeocode(lat: number, lon: number): Promise<string> {
@@ -416,12 +458,9 @@ export default function AnalyticsPage() {
       .finally(() => setLoadingMain(false));
 
     const { from, to } = getPeriodRange(p);
-    const fromStr = from.toISOString();
-    const toStr   = to.toISOString();
 
-    fetch(`/api/telemetry?tokenId=${tokenId}&from=${fromStr}&to=${toStr}&interval=1h&slim=1`)
-      .then((r) => r.json())
-      .then((d: Signal[]) => Array.isArray(d) ? setSessions(buildSessions(d)) : setSessions([]))
+    loadTelemetrySignals(tokenId, from, to)
+      .then((d) => setSessions(buildSessions(d)))
       .catch(() => setSessions([]))
       .finally(() => setLoadingTrips(false));
   }, []);
