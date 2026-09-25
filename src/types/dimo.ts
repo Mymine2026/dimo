@@ -44,6 +44,21 @@ export interface TelemetrySignal {
   accumulatedConsumption: number | null; // litres total, J1939 only
 }
 
+// One row from /api/telemetry/history (our own DB, not the live DIMO API) —
+// raw 5-min-resolution points, only available from when ingestion started.
+export interface TelemetryHistoryRow {
+  timestamp: string;
+  latitude: number | null;
+  longitude: number | null;
+  speed: number | null;
+  odometer_km: number | null;
+  fuel_level: number | null;
+  engine_rpm: number | null;
+  coolant_temp: number | null;
+  battery_voltage: number | null;
+  ignition_on: boolean | null;
+}
+
 export interface LatestStatus {
   timestamp?: string | null;
   speed?: number | null;

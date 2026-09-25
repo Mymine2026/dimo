@@ -3,7 +3,7 @@
 import { Component, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useParams } from "next/navigation";
-import { TelemetrySignal, LatestStatus } from "@/types/dimo";
+import { TelemetrySignal, LatestStatus, TelemetryHistoryRow } from "@/types/dimo";
 import { SignalChart } from "@/components/SpeedChart";
 import type { LocationPoint } from "@/components/VehicleMap";
 import dynamic from "next/dynamic";
@@ -284,16 +284,40 @@ export default function VehicleDetailPage() {
     const { hours, interval } = GPS_TRACK[range];
     const from = new Date(Date.now() - hours * 3_600_000).toISOString();
     const to   = new Date().toISOString();
+
+    // Prefer our own DB — raw 5-min points, no DIMO aggregation, dense enough
+    // for OSRM map-matching. It only has data from when ingestion started, so
+    // any earlier portion of the requested range is backfilled from DIMO live
+    // (aggregated, sparser — matching may fall back to straight lines there).
+    let localPts: LocationPoint[] = [];
     try {
-      const res  = await fetch(`/api/telemetry?tokenId=${tokenId}&slim=1&from=${from}&to=${to}&interval=${interval}`);
-      const data = await res.json();
-      if (res.ok && Array.isArray(data)) {
-        const pts: LocationPoint[] = (data as TelemetrySignal[])
-          .filter(s => s.location?.latitude != null && s.location?.longitude != null)
-          .map(s => ({ timestamp: s.timestamp, latitude: s.location!.latitude, longitude: s.location!.longitude }));
-        setGpsTrack(pts);
+      const localRes  = await fetch(`/api/telemetry/history?tokenId=${tokenId}&from=${from}&to=${to}`);
+      const localData = await localRes.json();
+      if (localRes.ok && Array.isArray(localData)) {
+        localPts = (localData as TelemetryHistoryRow[])
+          .filter(r => r.latitude != null && r.longitude != null)
+          .map(r => ({ timestamp: r.timestamp, latitude: r.latitude!, longitude: r.longitude! }));
       }
-    } catch { /* non-critical */ }
+    } catch { /* non-critical, fall through to live DIMO for the whole range */ }
+
+    const earliestLocal = localPts[0]?.timestamp;
+    const gapRemains = !earliestLocal || new Date(earliestLocal).getTime() - new Date(from).getTime() > 15 * 60_000;
+
+    let olderPts: LocationPoint[] = [];
+    if (gapRemains) {
+      try {
+        const gapTo = earliestLocal ?? to;
+        const res  = await fetch(`/api/telemetry?tokenId=${tokenId}&slim=1&from=${from}&to=${gapTo}&interval=${interval}`);
+        const data = await res.json();
+        if (res.ok && Array.isArray(data)) {
+          olderPts = (data as TelemetrySignal[])
+            .filter(s => s.location?.latitude != null && s.location?.longitude != null)
+            .map(s => ({ timestamp: s.timestamp, latitude: s.location!.latitude, longitude: s.location!.longitude }));
+        }
+      } catch { /* non-critical */ }
+    }
+
+    setGpsTrack([...olderPts, ...localPts]);
   }
 
   async function loadLatest() {
