@@ -13,7 +13,12 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-const files = ["001_create_users.sql", "002_create_companies_and_vehicles.sql"];
+const files = [
+  "001_create_users.sql",
+  "002_create_companies_and_vehicles.sql",
+  "003_create_documents.sql",
+  "004_create_telemetry.sql",
+];
 
 for (const file of files) {
   const sql = readFileSync(join(__dirname, file), "utf8");

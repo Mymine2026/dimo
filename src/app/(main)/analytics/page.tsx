@@ -477,9 +477,11 @@ export default function AnalyticsPage() {
   const kmLeft = tagliando?.next_service_km != null && odometer != null
     ? tagliando.next_service_km - Math.round(odometer)
     : null;
+  const isOverdue = kmLeft != null && kmLeft <= 0;
 
   const progressColor =
     kmLeft == null ? "#4ade80"
+    : kmLeft <= 0 ? "#dc2626"
     : kmLeft < 1000 ? "#f87171"
     : kmLeft < 5000 ? "#fbbf24"
     : "#4ade80";
@@ -706,7 +708,9 @@ export default function AnalyticsPage() {
                   {kmLeft != null ? (
                     <>
                       <p className="font-bold mb-2" style={{ fontSize: 22, color: progressColor }}>
-                        {kmLeft.toLocaleString()} km
+                        {isOverdue
+                          ? `SCADUTO da ${Math.abs(kmLeft).toLocaleString()} km`
+                          : `${kmLeft.toLocaleString()} km`}
                       </p>
                       <div className="w-full rounded-full overflow-hidden" style={{ height: 6, background: "#1e1f23" }}>
                         <div

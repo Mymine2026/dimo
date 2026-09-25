@@ -175,6 +175,62 @@ export async function queryTelemetry<T>(vehicleJwt: string, query: string, varia
   return json.data as T;
 }
 
+const LATEST_SIGNALS_QUERY = `
+  query GetLatestSignals($tokenId: Int!) {
+    signalsLatest(tokenId: $tokenId) {
+      speed { timestamp value }
+      powertrainFuelSystemRelativeLevel { timestamp value }
+      powertrainFuelSystemAbsoluteLevel { timestamp value }
+      powertrainCombustionEngineSpeed { timestamp value }
+      powertrainCombustionEngineECT { timestamp value }
+      powertrainCombustionEngineDieselExhaustFluidLevel { timestamp value }
+      powertrainCombustionEngineTPS { timestamp value }
+      powertrainTransmissionTravelledDistance { timestamp value }
+      lowVoltageBatteryCurrentVoltage { timestamp value }
+      exteriorAirTemperature { timestamp value }
+      isIgnitionOn { timestamp value }
+      obdStatusDTCCount { timestamp value }
+      powertrainFuelSystemAccumulatedConsumption { timestamp value }
+      powertrainCombustionEngineTorquePercent { timestamp value }
+      currentLocationCoordinates { timestamp value { latitude longitude } }
+    }
+  }
+`;
+
+// Fetch + flatten the latest signals for one vehicle. Shared by /api/latest and the
+// telemetry ingest cron so both use the exact same GraphQL query and shape.
+export async function getLatestSignals(tokenId: number): Promise<Record<string, unknown> | null> {
+  const devJwt     = await getDeveloperJwt();
+  const vehicleJwt = await getVehicleJwt(devJwt, tokenId);
+  const data = await queryTelemetry<{
+    signalsLatest: Record<string, { timestamp: string; value: unknown } | null> | null
+  }>(vehicleJwt, LATEST_SIGNALS_QUERY, { tokenId });
+
+  const raw = data?.signalsLatest;
+  if (!raw) return null;
+
+  // GraphQL returns each signal as { timestamp, value } — flatten to plain values.
+  // currentLocationCoordinates is special: keep timestamp alongside lat/lng.
+  const flattened: Record<string, unknown> = {};
+  for (const [key, signal] of Object.entries(raw)) {
+    if (
+      key === "currentLocationCoordinates" &&
+      signal != null && typeof signal === "object" &&
+      "value" in signal && signal.value != null
+    ) {
+      flattened[key] = {
+        timestamp: (signal as { timestamp: string }).timestamp,
+        ...(signal.value as { latitude: number; longitude: number }),
+      };
+    } else {
+      flattened[key] = signal != null && typeof signal === "object" && "value" in signal
+        ? signal.value
+        : signal;
+    }
+  }
+  return flattened;
+}
+
 // Strip JWT tokens and long base64 blobs from error messages before sending to client
 export function sanitizeError(err: unknown): string {
   return String(err)

@@ -1,62 +1,37 @@
-﻿import { NextResponse } from "next/server";
-import { getDeveloperJwt, getVehicleJwt, queryTelemetry, sanitizeError } from "@/lib/dimo";
+import { NextResponse } from "next/server";
+import { getLatestSignals, sanitizeError } from "@/lib/dimo";
+import pool from "@/lib/db";
 
-const LATEST_QUERY = `
-  query GetLatestSignals($tokenId: Int!) {
-    signalsLatest(tokenId: $tokenId) {
-      speed { timestamp value }
-      powertrainFuelSystemRelativeLevel { timestamp value }
-      powertrainFuelSystemAbsoluteLevel { timestamp value }
-      powertrainCombustionEngineSpeed { timestamp value }
-      powertrainCombustionEngineECT { timestamp value }
-      powertrainCombustionEngineDieselExhaustFluidLevel { timestamp value }
-      powertrainCombustionEngineTPS { timestamp value }
-      powertrainTransmissionTravelledDistance { timestamp value }
-      lowVoltageBatteryCurrentVoltage { timestamp value }
-      exteriorAirTemperature { timestamp value }
-      isIgnitionOn { timestamp value }
-      obdStatusDTCCount { timestamp value }
-      powertrainFuelSystemAccumulatedConsumption { timestamp value }
-      powertrainCombustionEngineTorquePercent { timestamp value }
-      currentLocationCoordinates { timestamp value { latitude longitude } }
-    }
-  }
-`;
+const FRESH_MS = 10 * 60 * 1000; // reuse a stored telemetry row if newer than this
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const tokenId = searchParams.get("tokenId");
   if (!tokenId) return NextResponse.json({ error: "tokenId required" }, { status: 400 });
 
+  // Prefer a recent locally-stored row (fast, no DIMO round-trip) before falling
+  // back to a live DIMO call. `raw` is stored in the exact shape getLatestSignals
+  // returns, so this stays a drop-in replacement for the frontend.
   try {
-    const devJwt     = await getDeveloperJwt();
-    const vehicleJwt = await getVehicleJwt(devJwt, parseInt(tokenId));
-    const data = await queryTelemetry<{
-      signalsLatest: Record<string, { timestamp: string; value: unknown } | null> | null
-    }>(vehicleJwt, LATEST_QUERY, { tokenId: parseInt(tokenId) });
-
-    const raw = data?.signalsLatest;
-    if (!raw) return NextResponse.json(null);
-
-    // GraphQL returns each signal as { timestamp, value } — flatten to plain values.
-    // currentLocationCoordinates is special: keep timestamp alongside lat/lng.
-    const flattened: Record<string, unknown> = {};
-    for (const [key, signal] of Object.entries(raw)) {
-      if (
-        key === 'currentLocationCoordinates' &&
-        signal != null && typeof signal === 'object' &&
-        'value' in signal && signal.value != null
-      ) {
-        flattened[key] = {
-          timestamp: (signal as { timestamp: string }).timestamp,
-          ...(signal.value as { latitude: number; longitude: number }),
-        };
-      } else {
-        flattened[key] = signal != null && typeof signal === 'object' && 'value' in signal
-          ? signal.value
-          : signal;
-      }
+    const { rows } = await pool.query(
+      `SELECT t.raw, t.recorded_at
+         FROM telemetry t
+         JOIN vehicles v ON v.id = t.vehicle_id
+        WHERE v.token_id = $1
+        ORDER BY t.recorded_at DESC
+        LIMIT 1`,
+      [Number(tokenId)]
+    );
+    const row = rows[0];
+    if (row && Date.now() - new Date(row.recorded_at).getTime() < FRESH_MS) {
+      return NextResponse.json(row.raw);
     }
+  } catch {
+    // DB unavailable or vehicle not in `vehicles` yet — fall through to live DIMO call
+  }
+
+  try {
+    const flattened = await getLatestSignals(parseInt(tokenId));
     return NextResponse.json(flattened);
   } catch (err) {
     return NextResponse.json({ error: sanitizeError(err) }, { status: 500 });
