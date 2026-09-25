@@ -153,16 +153,41 @@ export function VehicleMap({ allLocations, recentLocations, lastKnownPosition, i
       heatRef.current = heat;
 
       // ── Route layer: one polyline per trip segment ──
+      // Draw the raw straight-line polyline first (instant), then snap it to
+      // the road network via the self-hosted OSRM match API in the background
+      // and swap the geometry in-place once it resolves. Only attempted for
+      // the dense "recent" points — sparse/aggregated historical ranges keep
+      // the straight-line rendering, which is the honest representation there.
       const trips = segmentTrips(routePts, 60);
       if (trips.length > 0) {
         const group = L.layerGroup();
+        const tripLayers: import("leaflet").Polyline[] = [];
         for (const trip of trips) {
-          L.polyline(
+          const layer = L.polyline(
             trip.map(p => [p.latitude, p.longitude] as [number, number]),
             { color: "#f97316", weight: 3, opacity: 0.85 }
-          ).addTo(group);
+          );
+          layer.addTo(group);
+          tripLayers.push(layer);
         }
         routeRef.current = group;
+
+        if (recentLocations.length > 0) {
+          trips.forEach((trip, i) => {
+            if (trip.length < 2) return;
+            fetch("/api/route-match", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ points: trip }),
+            })
+              .then(r => r.json())
+              .then((res: { matched?: [number, number][] | null }) => {
+                if (!isMounted || !res.matched) return;
+                tripLayers[i].setLatLngs(res.matched);
+              })
+              .catch(() => {});
+          });
+        }
       }
 
       if (!isMounted) return;
