@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Loader2, AlertCircle, ArrowRight } from "lucide-react";
+import { ReleaseInfo } from "@/components/ReleaseInfo";
 
 type Tab = "fleet" | "driver";
 
@@ -137,9 +138,12 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <p style={{ fontSize: 12, color: "#3a3b3f", marginTop: "auto", paddingTop: 40, textAlign: "center" }}>
-        © 2026 Conexo Technologies
-      </p>
+      <div style={{ marginTop: "auto", paddingTop: 40 }}>
+        <ReleaseInfo />
+        <p style={{ fontSize: 12, color: "#3a3b3f", marginTop: 8, textAlign: "center" }}>
+          © 2026 Conexo Technologies
+        </p>
+      </div>
     </div>
   );
 }

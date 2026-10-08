@@ -3,6 +3,7 @@
 import { useSession, signOut } from "next-auth/react";
 import { Shield, LogOut, ChevronRight, Settings2 } from "lucide-react";
 import Link from "next/link";
+import { ReleaseInfo } from "@/components/ReleaseInfo";
 
 export default function ProfilePage() {
   const { data: session } = useSession();
@@ -77,6 +78,11 @@ export default function ProfilePage() {
         <LogOut className="w-4 h-4 shrink-0" style={{ color: "#f87171" }} />
         <span className="font-semibold" style={{ fontSize: 14, color: "#f87171" }}>Esci</span>
       </button>
+
+      {/* ── Versione / rilasci ───────────────────────────────────── */}
+      <div style={{ marginTop: 24 }}>
+        <ReleaseInfo />
+      </div>
     </div>
   );
 }
