@@ -12,6 +12,7 @@ const VehicleMap = dynamic(
   { ssr: false, loading: () => <div className="rounded-xl animate-pulse" style={{ background: "#1e1f23", height: 300 }} /> }
 );
 import { formatSpeed, formatPercent } from "@/lib/utils";
+import { withDerivedSpeeds } from "@/lib/speed";
 import {
   Loader2, AlertCircle, ArrowLeft, RefreshCw, Plug,
   Zap, Gauge, Droplets, Thermometer, Route, MapPin, Wrench,
@@ -361,7 +362,10 @@ export default function VehicleDetailPage() {
   const lastSignal  = signals.at(-1);
   const lastUpdated = formatTimestamp(lastSignal?.timestamp);
 
-  const speed               = extractNum(latest?.speed)                                             ?? lastSignal?.speed;
+  // Speed series with odometer-derived values where the reported speed is unusable (IVECO)
+  const speedSignals = withDerivedSpeeds(signals);
+
+  const speed               = extractNum(latest?.speed)                                             ?? speedSignals.at(-1)?.speed;
   const fuel                = extractNum(latest?.powertrainFuelSystemRelativeLevel)                 ?? lastSignal?.fuelLevel;
   const rpm                 = extractNum(latest?.powertrainCombustionEngineSpeed)                   ?? lastSignal?.engineRpm;
   const coolant             = extractNum(latest?.powertrainCombustionEngineECT)                     ?? lastSignal?.engineCoolantTemp;
@@ -372,7 +376,12 @@ export default function VehicleDetailPage() {
   const ignition            = extractNum(latest?.isIgnitionOn)                                      ?? lastSignal?.isIgnitionOn;
   const torquePercent       = extractNum(latest?.powertrainCombustionEngineTorquePercent)           ?? lastSignal?.torquePercent;
   const accumulatedFuel     = extractNum(latest?.powertrainFuelSystemAccumulatedConsumption)        ?? lastSignal?.accumulatedConsumption;
-  const engineOn = ignition == null || Number(ignition) !== 0;
+  // The ignition flag is unreliable on some devices (Trafic: it follows battery voltage, so the
+  // smart alternator makes it read "off" while driving). Trust RPM/speed over it.
+  const engineOn = ignition == null
+    || Number(ignition) !== 0
+    || (rpm != null && rpm > 400)
+    || (speed != null && speed > 1);
 
   // Fuel consumption delta for selected period (accumulated consumption last - first non-null)
   const fuelWithAcc = signals.filter(s => s.accumulatedConsumption != null);
@@ -404,7 +413,6 @@ export default function VehicleDetailPage() {
     : null;
 
   // Filter each chart to its non-null data points — avoids gaps from unsampled intervals
-  const speedSignals    = signals;                                         // speed always present (0 when parked)
   const fuelSignals     = signals.filter(s => s.fuelLevel != null);
   const rpmSignals      = signals.filter(s => s.engineRpm != null);
   const coolantSignals  = signals.filter(s => s.engineCoolantTemp != null);
@@ -418,7 +426,7 @@ export default function VehicleDetailPage() {
 
   // Punteggio di guida: preferisce la velocità reale; fallback GPS se il sensore riporta sempre 0
   // (es. IVECO/dispositivi che non trasmettono speed). Stima la velocità da distanza/tempo tra punti.
-  const movingBySpeed = signals.map(s => s.speed).filter((v): v is number => v != null && v > 5);
+  const movingBySpeed = speedSignals.map(s => s.speed).filter((v): v is number => v != null && v > 5);
   const movingSpeeds: number[] = (() => {
     if (movingBySpeed.length >= 5) return movingBySpeed;
     const gps: number[] = [];
@@ -589,7 +597,7 @@ export default function VehicleDetailPage() {
       {(!loading || signals.length > 0) && (
         <>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <MetricCard label="Velocità"     value={formatSpeed(ignition != null && Number(ignition) === 0 ? null : speed)}  subtitle={lastUpdated} />
+            <MetricCard label="Velocità"     value={formatSpeed(engineOn ? speed : null)}  subtitle={latest?.speedEstimated ? `${lastUpdated} · stimata da odometro` : lastUpdated} />
             <MetricCard label="Carburante"   value={formatPercent(fuel)} subtitle={lastUpdated} />
             {engineOn && (
               <MetricCard
@@ -678,8 +686,8 @@ export default function VehicleDetailPage() {
                   <Zap className="w-3.5 h-3.5" style={{ color: "#8e9192" }} />
                   <span className="text-xs" style={{ color: "#8e9192" }}>
                     Quadro{" "}
-                    <span className="font-semibold" style={{ color: Number(ignition) !== 0 ? "#4ade80" : "#8e9192" }}>
-                      {Number(ignition) !== 0 ? "Acceso" : "Spento"}
+                    <span className="font-semibold" style={{ color: engineOn ? "#4ade80" : "#8e9192" }}>
+                      {engineOn ? "Acceso" : "Spento"}
                     </span>
                   </span>
                 </div>
@@ -803,7 +811,7 @@ export default function VehicleDetailPage() {
                 allLocations={locations}
                 recentLocations={gpsTrack}
                 lastKnownPosition={latest?.currentLocationCoordinates ?? undefined}
-                isParked={ignition != null && Number(ignition) === 0 && (speed === 0 || speed == null)}
+                isParked={ignition != null && !engineOn}
                 height="350px"
               />
             </div>

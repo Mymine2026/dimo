@@ -62,6 +62,7 @@ export interface TelemetryHistoryRow {
 export interface LatestStatus {
   timestamp?: string | null;
   speed?: number | null;
+  speedEstimated?: boolean | null; // true when `speed` was derived from the odometer, not reported
   powertrainFuelSystemRelativeLevel?: number | null;
   powertrainFuelSystemAbsoluteLevel?: number | null;
   powertrainFuelSystemAccumulatedConsumption?: number | null;
