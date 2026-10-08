@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import pool from "@/lib/db";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
@@ -29,6 +30,18 @@ export async function GET(
   }
 
   const filename = path.join("/");
+
+  // Only the owner of the document (or someone in the same company) may read the file.
+  const u = session.user as { role?: string; company_id?: number | null; user_id?: string };
+  if (u.role !== "super_admin") {
+    const { rowCount } = await pool.query(
+      `SELECT 1 FROM documents
+        WHERE file_url = $1 AND (user_id = $2 OR (company_id IS NOT NULL AND company_id = $3))`,
+      [`/api/documents/file/${filename}`, u.user_id ? parseInt(u.user_id) : null, u.company_id ?? null]
+    );
+    if (!rowCount) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const filePath = join(process.cwd(), "public", "uploads", filename);
 
   if (!existsSync(filePath)) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireVehicleAccess } from "@/lib/access";
 import { getDeveloperJwt, getVehicleJwt, queryTelemetry, sanitizeError } from "@/lib/dimo";
 
 export const maxDuration = 45;
@@ -63,6 +64,9 @@ export async function GET(req: Request) {
   const to   = searchParams.get("to")   ?? new Date().toISOString();
 
   if (!tokenId) return NextResponse.json({ error: "tokenId required" }, { status: 400 });
+
+  const denied = await requireVehicleAccess(tokenId);
+  if (denied) return denied;
 
   const fromDate = new Date(from);
   const toDate   = new Date(to);

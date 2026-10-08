@@ -10,6 +10,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.7.0",
+    date: "08/10/2026",
+    title: "Sicurezza e accesso per azienda",
+    notes: [
+      "Dati veicolo (ultimi valori, telemetria, storico, manutenzioni) visibili solo a chi ha accesso a quel veicolo: super admin, admin dell'azienda, autista assegnato",
+      "Rimossi gli endpoint di debug e di prova, compreso uno che restituiva il token sviluppatore DIMO",
+      "Limite ai tentativi di login ripetuti e accesso ai documenti solo al proprietario o alla stessa azienda",
+      "Tutte le pagine richiedono il login",
+    ],
+  },
+  {
     version: "1.6.0",
     date: "08/10/2026",
     title: "Velocità corrette e riferimento versione",

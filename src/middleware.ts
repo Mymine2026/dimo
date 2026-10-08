@@ -6,6 +6,7 @@ export default withAuth({
   },
 });
 
+// Every page requires a session except the login page; API routes check the session themselves.
 export const config = {
-  matcher: ["/vehicles/:path*", "/dashboard/:path*"],
+  matcher: ["/((?!api|login|_next|favicon.ico|.*\\.png$|.*\\.svg$|.*\\.jpg$|.*\\.ico$).*)"],
 };

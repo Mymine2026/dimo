@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { requireVehicleAccess } from "@/lib/access";
 
 // Reads locally-stored telemetry (5-min resolution) instead of querying DIMO live.
 // No aggregation-interval limits and no risk of the 30-day-range DIMO timeout.
@@ -7,6 +8,9 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const tokenId = searchParams.get("tokenId");
   if (!tokenId) return NextResponse.json({ error: "tokenId required" }, { status: 400 });
+
+  const denied = await requireVehicleAccess(tokenId);
+  if (denied) return denied;
 
   const from = searchParams.get("from") ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const to   = searchParams.get("to")   ?? new Date().toISOString();

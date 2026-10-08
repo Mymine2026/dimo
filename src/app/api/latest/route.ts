@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getLatestSignals, sanitizeError } from "@/lib/dimo";
 import { deriveSpeedKmh, pickSpeed } from "@/lib/speed";
+import { requireVehicleAccess } from "@/lib/access";
 import pool from "@/lib/db";
 
 const FRESH_MS = 10 * 60 * 1000; // reuse a stored telemetry row if newer than this
@@ -10,6 +11,9 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const tokenId = searchParams.get("tokenId");
   if (!tokenId) return NextResponse.json({ error: "tokenId required" }, { status: 400 });
+
+  const denied = await requireVehicleAccess(tokenId);
+  if (denied) return denied;
 
   // Prefer a recent locally-stored row (fast, no DIMO round-trip) before falling
   // back to a live DIMO call. `raw` is stored in the exact shape getLatestSignals

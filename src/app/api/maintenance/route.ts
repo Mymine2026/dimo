@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import pool from "@/lib/db";
+import { requireVehicleAccess } from "@/lib/access";
 
 async function getUser() {
   const session = await getServerSession(authOptions);
@@ -16,6 +17,9 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const tokenId = searchParams.get("tokenId");
   if (!tokenId) return NextResponse.json({ error: "tokenId richiesto" }, { status: 400 });
+
+  const denied = await requireVehicleAccess(tokenId);
+  if (denied) return denied;
 
   const { rows: vRows } = await pool.query(
     "SELECT id FROM vehicles WHERE token_id = $1 LIMIT 1",
@@ -37,6 +41,9 @@ export async function POST(req: Request) {
   const { tokenId, type, date, km_at_service, next_service_km, notes } = await req.json();
   if (!tokenId) return NextResponse.json({ error: "tokenId richiesto" }, { status: 400 });
   if (!type)    return NextResponse.json({ error: "type obbligatorio" },  { status: 400 });
+
+  const denied = await requireVehicleAccess(tokenId);
+  if (denied) return denied;
 
   const { rows: vRows } = await pool.query(
     "SELECT id FROM vehicles WHERE token_id = $1 LIMIT 1",

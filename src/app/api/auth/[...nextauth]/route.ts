@@ -2,6 +2,7 @@ import NextAuth, { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import pool from "@/lib/db";
+import { isLockedOut, recordFailure, clearFailures } from "@/lib/rate-limit";
 
 export const authOptions: AuthOptions = {
   providers: [
@@ -14,16 +15,21 @@ export const authOptions: AuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
+        // Too many recent failures for this email: refuse without even checking the password.
+        const key = credentials.email.trim().toLowerCase();
+        if (isLockedOut(key)) return null;
+
         const { rows } = await pool.query(
           "SELECT id, email, password_hash, role, company_id FROM users WHERE email = $1",
           [credentials.email]
         );
 
         const user = rows[0];
-        if (!user) return null;
+        if (!user) { recordFailure(key); return null; }
 
         const valid = await bcrypt.compare(credentials.password, user.password_hash);
-        if (!valid) return null;
+        if (!valid) { recordFailure(key); return null; }
+        clearFailures(key);
 
         return {
           id: String(user.id),
