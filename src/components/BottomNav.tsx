@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Truck, BarChart2, FileText, User } from "lucide-react";
+import { Truck, ClipboardList, BarChart2, FileText, User } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/vehicles",  icon: Truck,     label: "Flotta"    },
-  { href: "/analytics", icon: BarChart2, label: "Dati"      },
+  { href: "/vehicles",  icon: Truck,         label: "Flotta"    },
+  { href: "/gestione",  icon: ClipboardList, label: "Gestione"  },
+  { href: "/analytics", icon: BarChart2,     label: "Dati"      },
   { href: "/documents", icon: FileText,  label: "Documenti" },
   { href: "/profile",   icon: User,      label: "Profilo"   },
 ] as const;

@@ -18,6 +18,8 @@ const files = [
   "002_create_companies_and_vehicles.sql",
   "003_create_documents.sql",
   "004_create_telemetry.sql",
+  "005_create_maintenance_plans.sql",
+  "006_create_vehicle_assignments.sql",
 ];
 
 for (const file of files) {

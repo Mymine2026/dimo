@@ -10,6 +10,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.8.0",
+    date: "09/10/2026",
+    title: "Gestione: scadenze e autisti",
+    notes: [
+      "Nuova sezione Gestione con le scadenze di manutenzione per veicolo (a km e/o a data, con stato scaduta / in scadenza / in regola)",
+      "Segna come eseguita: la scadenza si ricalcola e l'intervento resta nello storico manutenzioni",
+      "Assegnazione dell'autista al veicolo nel tempo, con storico; l'autista vede solo il veicolo che ha in quel momento",
+      "Utilizzo per autista: km, giorni di utilizzo, km fuori orario e velocità media in marcia",
+    ],
+  },
+  {
     version: "1.7.0",
     date: "08/10/2026",
     title: "Sicurezza e accesso per azienda",
