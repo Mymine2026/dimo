@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, Check, Loader2, Pencil, Plus, Trash2, Wrench, Users, X } from "lucide-react";
+import { AlertCircle, Check, Loader2, Pencil, Plus, Radio, Trash2, Wrench, Users, X } from "lucide-react";
 import type { MaintenancePlan, PlanDue } from "@/lib/maintenance-plans";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ interface UsageRow {
   avg_speed: number | null;
 }
 
-type Tab = "scadenze" | "autisti";
+type Tab = "scadenze" | "autisti" | "sensori";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -438,6 +438,143 @@ function AutistiTab({ vehicles, drivers, usage, days, onDays, onChanged }: {
   );
 }
 
+// ─── sensori e consumi SIM ───────────────────────────────────────────────────
+
+interface SimDay { day: string; bytes: number; packets: number; connections: number }
+interface SimSummary {
+  usage_start: string; cycle_start: string; cycle_end: string; allowance_bytes: number; used_bytes: number;
+  percent: number; today_bytes: number; projected_bytes: number | null; days_left: number; days: SimDay[];
+}
+interface SimReport { day: string; day_bytes: number; cycle_bytes: number; percent: number; alert: string | null }
+interface SimDevice {
+  imei: string; label: string | null; vehicle_name: string; plate: string | null; last_seen_at: string | null;
+  summary: SimSummary | null; reports: SimReport[];
+}
+
+const fmtData = (b: number) =>
+  b >= 1e9 ? `${(b / 1e9).toFixed(2).replace(".", ",")} GB`
+  : b >= 1e6 ? `${(b / 1e6).toFixed(1).replace(".", ",")} MB`
+  : `${Math.round(b / 1e3)} KB`;
+
+const fmtPct = (p: number) => `${p.toFixed(1).replace(".", ",")}%`;
+const simColor = (p: number) => (p >= 90 ? "#f87171" : p >= 70 ? "#fbbf24" : "#4ade80");
+
+function SimTab() {
+  const [devices, setDevices] = useState<SimDevice[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/devices/usage");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Errore nel caricamento");
+        setDevices(data.devices);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Errore nel caricamento");
+      }
+    })();
+  }, []);
+
+  if (error) return <ErrBanner msg={error} />;
+  if (!devices) {
+    return (
+      <div className="flex items-center gap-3 py-16 justify-center">
+        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#8e9192" }} />
+      </div>
+    );
+  }
+  if (devices.length === 0) return <Empty label="Nessun sensore con ricezione diretta" />;
+
+  return (
+    <>
+      {devices.map((d) => {
+        const s = d.summary;
+        const maxDay = s ? Math.max(1, ...s.days.map((x) => x.bytes)) : 1;
+        return (
+          <div key={d.imei} className="rounded-2xl p-4 mb-3" style={{ background: "#1e1f23" }}>
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="min-w-0">
+                <p className="font-bold text-white truncate" style={{ fontSize: 16 }}>
+                  {d.vehicle_name}{d.plate ? ` · ${d.plate}` : ""}
+                </p>
+                <p style={{ fontSize: 11, color: "#8e9192" }}>
+                  Sensore {d.label ? `${d.label} · ` : ""}IMEI {d.imei}
+                  {d.last_seen_at ? ` · ultimo dato ${new Date(d.last_seen_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
+                </p>
+              </div>
+            </div>
+
+            {!s && <p style={{ fontSize: 12, color: "#6b7280" }}>In attesa del primo dato: il mese di consumo parte da lì.</p>}
+
+            {s && (
+              <>
+                <div className="flex items-end justify-between mb-1.5">
+                  <p className="font-bold" style={{ fontSize: 30, color: simColor(s.percent), lineHeight: 1 }}>{fmtPct(s.percent)}</p>
+                  <p style={{ fontSize: 12, color: "#8e9192" }}>{fmtData(s.used_bytes)} su {fmtData(s.allowance_bytes)}</p>
+                </div>
+                <div style={{ height: 8, borderRadius: 999, background: "#292a2e", overflow: "hidden" }}>
+                  <div style={{ width: `${Math.min(100, s.percent)}%`, height: "100%", background: simColor(s.percent) }} />
+                </div>
+                <p className="mt-1.5" style={{ fontSize: 11, color: "#6b7280" }}>
+                  Mese di consumo dal {fmtDay(s.cycle_start)} al {fmtDay(new Date(new Date(s.cycle_end).getTime() - 86_400_000).toISOString())} · primo giorno di utilizzo {fmtDay(s.usage_start)}
+                </p>
+
+                <div className="grid grid-cols-3 gap-2 mt-3">
+                  {([
+                    ["Oggi", fmtData(s.today_bytes)],
+                    ["Fine mese (proiezione)", s.projected_bytes != null ? fmtData(s.projected_bytes) : "—"],
+                    ["Giorni al rinnovo", String(s.days_left)],
+                  ] as const).map(([k, v]) => (
+                    <div key={k} className="rounded-xl p-2.5" style={{ background: "#292a2e" }}>
+                      <p style={{ fontSize: 10, color: "#8e9192" }}>{k}</p>
+                      <p className="font-semibold text-white" style={{ fontSize: 14 }}>{v}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {s.projected_bytes != null && s.projected_bytes > s.allowance_bytes && (
+                  <p className="mt-2" style={{ fontSize: 12, color: "#fbbf24" }}>
+                    Con questo ritmo la soglia di {fmtData(s.allowance_bytes)} verrebbe superata prima della fine del mese.
+                  </p>
+                )}
+
+                {s.days.length > 0 && (
+                  <div className="mt-3">
+                    <p style={{ fontSize: 11, color: "#8e9192", marginBottom: 4 }}>Consumo giornaliero</p>
+                    <div className="flex items-end gap-0.5" style={{ height: 44 }}>
+                      {s.days.map((x) => (
+                        <div key={x.day} title={`${fmtDay(x.day)}: ${fmtData(x.bytes)}`}
+                          style={{ flex: 1, minWidth: 2, height: `${Math.max(6, (x.bytes / maxDay) * 100)}%`, background: "#60a5fa", borderRadius: 2 }} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {d.reports.length > 0 && (
+              <div className="mt-3">
+                <p style={{ fontSize: 11, color: "#8e9192", marginBottom: 4 }}>Chiusure di fine giornata</p>
+                {d.reports.map((r) => (
+                  <div key={r.day} className="flex items-center justify-between py-1.5" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 12 }}>
+                    <span style={{ color: "#fff" }}>{fmtDay(r.day)}</span>
+                    <span style={{ color: "#8e9192" }}>{fmtData(r.day_bytes)} nel giorno</span>
+                    <span className="font-semibold" style={{ color: simColor(r.percent) }}>{fmtPct(r.percent)} del mese</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <p className="mt-2" style={{ fontSize: 11, color: "#6b7280" }}>
+        Stima dei dati che il sensore trasmette (dati, conferme, intestazioni di rete e collegamenti), calcolata dal server; non include gli SMS. Il conteggio esatto resta quello dell&apos;operatore. La soglia è 1 GB al mese per SIM.
+      </p>
+    </>
+  );
+}
+
 // ─── pagina ──────────────────────────────────────────────────────────────────
 
 export default function GestionePage() {
@@ -508,7 +645,7 @@ export default function GestionePage() {
 
       {canEdit && (
         <div className="flex gap-2 mb-4">
-          {([["scadenze", "Scadenze", Wrench], ["autisti", "Autisti", Users]] as const).map(([k, label, Icon]) => (
+          {([["scadenze", "Scadenze", Wrench], ["autisti", "Autisti", Users], ["sensori", "Sensori", Radio]] as const).map(([k, label, Icon]) => (
             <button key={k} onClick={() => setTab(k)} className="flex items-center gap-2 font-semibold"
               style={{ fontSize: 13, padding: "9px 16px", borderRadius: 999, background: tab === k ? "#fff" : "#1e1f23", color: tab === k ? "#000" : "#8e9192" }}>
               <Icon className="w-4 h-4" />{label}
@@ -527,6 +664,7 @@ export default function GestionePage() {
       {!loading && !error && tab === "scadenze" && (
         <ScadenzeTab vehicles={planVehicles} canEdit={canEdit} onChanged={() => void loadPlans()} />
       )}
+      {!loading && !error && tab === "sensori" && canEdit && <SimTab />}
       {!loading && !error && tab === "autisti" && canEdit && (
         <AutistiTab vehicles={driverVehicles} drivers={drivers} usage={usage} days={days} onDays={changeDays} onChanged={refreshDrivers} />
       )}

@@ -10,6 +10,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.9.0",
+    date: "25/10/2026",
+    title: "Ricezione diretta dai sensori",
+    notes: [
+      "Nuovo ingresso per i sensori Ruptela: i dati arrivano al server senza passare da DIMO e vengono salvati ogni 10 secondi in marcia",
+      "Registro dei sensori (IMEI -> veicolo): i dati di sensori non registrati vengono rifiutati",
+      "Mercedes: giri, velocità, odometro, carburante e temperatura letti dal bus del veicolo, quadro corretto",
+      "Gestione > Sensori: consumo dati della SIM di ogni sensore, in % sulla soglia di 1 GB al mese (il mese parte dal primo giorno di utilizzo), con chiusura di fine giornata",
+    ],
+  },
+  {
     version: "1.8.0",
     date: "09/10/2026",
     title: "Gestione: scadenze e autisti",
