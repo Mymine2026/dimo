@@ -114,7 +114,20 @@ export function mapRuptelaEvent(ev: RuptelaEvent, imei: number): TelemetryRow | 
     coolantTemp,
     batteryVoltage,
     ignitionOn,
+    // Stessa forma dei segnali DIMO (getLatestSignals): /api/latest restituisce `raw` così com'è,
+    // quindi la pagina del veicolo legge velocità, giri, posizione ecc. dagli stessi nomi.
     raw: {
+      timestamp: recordedAt.toISOString(),
+      speed,
+      powertrainFuelSystemRelativeLevel: fuelLevel,
+      powertrainCombustionEngineSpeed: engineRpm,
+      powertrainCombustionEngineECT: coolantTemp,
+      powertrainTransmissionTravelledDistance: odometerKm,
+      lowVoltageBatteryCurrentVoltage: batteryVoltage,
+      isIgnitionOn: ignitionOn ? 1 : 0,
+      currentLocationCoordinates: hasFix
+        ? { timestamp: recordedAt.toISOString(), latitude: pos.lat! / 1e7, longitude: pos.lon! / 1e7 }
+        : null,
       source: "ruptela",
       imei,
       sat: sat === 255 ? null : sat,

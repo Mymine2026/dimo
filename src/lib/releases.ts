@@ -10,6 +10,15 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.9.1",
+    date: "26/10/2026",
+    title: "Dati del sensore nella scheda veicolo",
+    notes: [
+      "I dati ricevuti direttamente dal sensore (velocità, giri, carburante, temperatura, odometro, posizione) compaiono ora anche nelle schede e nei grafici del veicolo, aggiornati in tempo reale",
+      "Per i veicoli con sensore diretto gli ultimi valori sono quelli del sensore, non più quelli vecchi di DIMO",
+    ],
+  },
+  {
     version: "1.9.0",
     date: "25/10/2026",
     title: "Ricezione diretta dai sensori",

@@ -29,7 +29,13 @@ export async function GET(req: Request) {
       [Number(tokenId)]
     );
     const [row, prev] = rows;
-    if (row && Date.now() - new Date(row.recorded_at).getTime() < FRESH_MS) {
+    // Veicolo con sensore diretto registrato: l'ultimo dato è quello del sensore anche se non recentissimo
+    // (DIMO non riceve più nulla da questo veicolo e mostrerebbe valori vecchi).
+    const { rows: dev } = await pool.query(
+      "SELECT 1 FROM devices d JOIN vehicles v ON v.id = d.vehicle_id WHERE v.token_id = $1 AND d.enabled LIMIT 1",
+      [Number(tokenId)]
+    );
+    if (row && (dev[0] || Date.now() - new Date(row.recorded_at).getTime() < FRESH_MS)) {
       // Some sources (IVECO) report ~0 km/h while driving: estimate from the odometer delta.
       const derived = prev
         ? deriveSpeedKmh(
