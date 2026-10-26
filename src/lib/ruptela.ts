@@ -38,7 +38,7 @@ export interface TelemetryRow {
   raw: Record<string, unknown>;
 }
 
-// IO conservati nel campo raw (per analisi e per aggiungere in seguito nuovi indicatori)
+// IO sempre conservati nel campo raw; gli altri segnali del sensore si salvano tutti, tranne quelli «non disponibili» (valore tutto FF)
 const RAW_IO = ["29", "30", "36", "65", "92", "114", "115", "116", "197", "206", "207", "208", "210", "362", "409", "518", "522", "538"];
 
 function hex(v: string | undefined): number | null {
@@ -101,7 +101,7 @@ export function mapRuptelaEvent(ev: RuptelaEvent, imei: number): TelemetryRow | 
   const ignitionOn = (engineRpm != null && engineRpm > 0) || sig["522"] === "01" || (speed != null && speed >= 3);
 
   const io: Record<string, string> = {};
-  for (const id of RAW_IO) if (sig[id] !== undefined) io[id] = sig[id];
+  for (const [id, v] of Object.entries(sig)) if (RAW_IO.includes(id) || !/^F+$/i.test(v)) io[id] = v;
 
   return {
     recordedAt,

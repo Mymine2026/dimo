@@ -23,13 +23,13 @@ interface VehicleAlerts {
 
 function computeHealth(v: Vehicle): number {
   let score = 20;
-  if (v.aftermarketDevice) score += 50;
+  if (v.sensor || v.aftermarketDevice) score += 50;
   if (v.syntheticDevice) score += 30;
   return score;
 }
 
 function computeStatus(v: Vehicle): VehicleStatus {
-  if (v.aftermarketDevice) return "ACTIVE";
+  if (v.sensor || v.aftermarketDevice) return "ACTIVE";
   if (v.syntheticDevice) return "IN SERVICE";
   return "NO SIGNAL";
 }
@@ -77,6 +77,7 @@ function VehicleCard({ vehicle, alerts }: { vehicle: Vehicle; alerts?: VehicleAl
   const cfg    = STATUS_CONFIG[status];
   const { make, model, year } = vehicle.definition;
   const hasOBD       = !!vehicle.aftermarketDevice;
+  const hasSensor    = !!vehicle.sensor;
   const hasSynthetic = !!vehicle.syntheticDevice;
 
   return (
@@ -97,9 +98,14 @@ function VehicleCard({ vehicle, alerts }: { vehicle: Vehicle; alerts?: VehicleAl
         <div className="flex-1 min-w-0">
           <p className="font-bold text-white leading-snug truncate" style={{ fontSize: 16 }}>
             {make} {model}
+            {vehicle.plate && (
+              <span className="font-semibold" style={{ marginLeft: 8, fontSize: 11, padding: "2px 7px", borderRadius: 6, background: "#292a2e", color: "#c4c7c8", letterSpacing: "0.05em" }}>
+                {vehicle.plate}
+              </span>
+            )}
           </p>
           <p className="truncate" style={{ color: "#8e9192", fontSize: 12, marginTop: 2 }}>
-            {year} · #{vehicle.tokenId}
+            {[year > 0 ? year : null, vehicle.tokenId > 0 ? `#${vehicle.tokenId}` : vehicle.sensor ? "sensore diretto" : "senza sensore"].filter(Boolean).join(" · ")}
           </p>
           <div className="flex items-center gap-1.5 mt-2">
             {hasOBD && (
@@ -112,6 +118,18 @@ function VehicleCard({ vehicle, alerts }: { vehicle: Vehicle; alerts?: VehicleAl
                 }}
               >
                 <Wifi className="w-2.5 h-2.5" /> OBD
+              </span>
+            )}
+            {hasSensor && (
+              <span
+                className="flex items-center gap-1 font-semibold"
+                style={{
+                  fontSize: 9, padding: "2px 7px", borderRadius: 6,
+                  background: "rgba(74,222,128,0.12)", color: "#4ade80",
+                  letterSpacing: "0.05em", textTransform: "uppercase",
+                }}
+              >
+                <Wifi className="w-2.5 h-2.5" /> SENSORE
               </span>
             )}
             {hasSynthetic && (
@@ -248,6 +266,7 @@ export default function VehiclesPage() {
           v.definition.make.toLowerCase().includes(q) ||
           v.definition.model.toLowerCase().includes(q) ||
           String(v.definition.year).includes(q) ||
+          (v.plate ?? "").toLowerCase().includes(q) ||
           String(v.tokenId).includes(q)
         );
       })

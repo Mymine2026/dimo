@@ -8,6 +8,7 @@ import { FIELD_DEFS, FieldGrid, setField } from "@/components/LibrettoImport";
 interface CardResponse {
   has_card: boolean;
   can_edit: boolean;
+  imei: string | null;
   card: (Record<string, unknown> & { libretto_url?: string | null; imei?: string | null }) | null;
   vehicle: { id: number; token_id: number; name: string; company_id: number | null };
 }
@@ -42,6 +43,7 @@ export default function VehicleSheet({ tokenId }: { tokenId: string }) {
   const [fileId, setFileId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [imei, setImei] = useState("");
   const input = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -51,6 +53,7 @@ export default function VehicleSheet({ tokenId }: { tokenId: string }) {
       const d: CardResponse = await r.json();
       setData(d);
       setFields(toFields(d.card));
+      setImei(d.imei ?? "");
     } catch { /* la scheda non è essenziale */ }
   }, [tokenId]);
 
@@ -71,6 +74,21 @@ export default function VehicleSheet({ tokenId }: { tokenId: string }) {
       setEdit(true); setOpen(true);
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); if (input.current) input.current.value = ""; }
+  }
+
+  async function saveImei() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/vehicles/card", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenId: Number(tokenId), imei }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Errore");
+      setMsg(imei.trim() ? "Sensore associato: i dati compariranno alla prima trasmissione." : "Sensore scollegato.");
+      await load();
+    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
   }
 
   async function save() {
@@ -147,16 +165,26 @@ export default function VehicleSheet({ tokenId }: { tokenId: string }) {
                       </div>
                     );
                   })}
-                  {card.imei && (
-                    <div>
-                      <p className="font-semibold uppercase tracking-widest" style={{ fontSize: 9, color: "#8e9192" }}>Sensore (IMEI)</p>
-                      <p className="text-white" style={{ fontSize: 13, marginTop: 2 }}>{card.imei}</p>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <p style={{ fontSize: 13, color: "#8e9192" }}>Carica il libretto per compilare la scheda in automatico.</p>
               )}
+
+              <div style={{ marginTop: 14 }}>
+                <p className="font-semibold uppercase tracking-widest" style={{ fontSize: 9, color: "#8e9192" }}>Sensore Ruptela (IMEI)</p>
+                {can_edit ? (
+                  <div className="flex items-center gap-2" style={{ marginTop: 4 }}>
+                    <input value={imei} onChange={e => setImei(e.target.value)} inputMode="numeric" maxLength={15} placeholder="nessun sensore associato"
+                      className="flex-1 text-white text-sm outline-none" style={{ background: "#292a2e", borderRadius: 10, padding: "8px 10px" }} />
+                    <button type="button" disabled={busy || imei.trim() === (data?.imei ?? "")} onClick={saveImei}
+                      className="font-bold disabled:opacity-40" style={{ background: "#fff", color: "#000", borderRadius: 10, padding: "8px 14px", fontSize: 12 }}>
+                      {imei.trim() ? "Associa" : "Scollega"}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-white" style={{ fontSize: 13, marginTop: 2 }}>{data?.imei ?? "—"}</p>
+                )}
+              </div>
 
               <div className="flex items-center gap-3 flex-wrap" style={{ marginTop: 14 }}>
                 {card?.libretto_url && (

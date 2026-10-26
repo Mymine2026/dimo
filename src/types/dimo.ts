@@ -22,6 +22,8 @@ export interface Vehicle {
   definition: VehicleDefinition;
   syntheticDevice?: SyntheticDevice | null;
   aftermarketDevice?: AftermarketDevice | null;
+  plate?: string | null;   // targa dal libretto / anagrafica flotta
+  sensor?: boolean;        // sensore Ruptela associato (ricezione diretta)
 }
 
 export interface TelemetrySignal {

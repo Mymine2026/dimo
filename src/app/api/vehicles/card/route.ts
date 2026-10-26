@@ -25,10 +25,11 @@ export async function GET(req: Request) {
   const manage = canManage(user);
   const hasCard = r.created_at != null;
   if (!manage) { r.owner_name = null; r.owner_address = null; }
-  return NextResponse.json({ has_card: hasCard, can_edit: manage, card: hasCard ? r : null, vehicle: { id: r.vehicle_id, token_id: r.token_id, name: r.name, company_id: r.company_id } });
+  return NextResponse.json({ has_card: hasCard, can_edit: manage, imei: r.imei ?? null, card: hasCard ? r : null, vehicle: { id: r.vehicle_id, token_id: r.token_id, name: r.name, company_id: r.company_id } });
 }
 
-// PUT { tokenId, fields, file_id? }  →  crea/aggiorna la scheda (anche da un nuovo libretto caricato).
+// PUT { tokenId, fields?, file_id?, imei? }  →  crea/aggiorna la scheda (anche da un nuovo libretto caricato)
+// e/o associa il sensore Ruptela (IMEI) al veicolo; imei vuoto = scollega il sensore.
 export async function PUT(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -38,15 +39,39 @@ export async function PUT(req: Request) {
   const tokenId = Number(body.tokenId);
   if (!(await canAccessVehicle(user, tokenId))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const card = toCardValues(body.fields);
+  const card = body.fields ? toCardValues(body.fields) : null;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const v = await client.query("SELECT id, company_id FROM vehicles WHERE token_id = $1", [tokenId]);
     if (!v.rowCount) throw new Error("Veicolo non trovato");
     const { id, company_id } = v.rows[0];
-    await upsertCard(client, id, card);
-    if (card.plate) await client.query("UPDATE vehicles SET plate = $1 WHERE id = $2", [card.plate, id]);
+    if (card) {
+      await upsertCard(client, id, card);
+      if (card.plate) await client.query("UPDATE vehicles SET plate = $1 WHERE id = $2", [card.plate, id]);
+    }
+
+    if (typeof body.imei === "string") {
+      const imei = body.imei.replace(/\s/g, "");
+      if (imei === "") {
+        await client.query("UPDATE devices SET enabled = FALSE WHERE vehicle_id = $1", [id]);
+      } else {
+        if (!/^\d{15}$/.test(imei)) throw new Error("L'IMEI deve avere 15 cifre");
+        const ex = await client.query("SELECT vehicle_id FROM devices WHERE imei = $1", [imei]);
+        if (ex.rowCount && ex.rows[0].vehicle_id !== id) throw new Error("IMEI già associato a un altro veicolo");
+        if (ex.rowCount) {
+          await client.query("UPDATE devices SET enabled = TRUE WHERE imei = $1", [imei]);
+        } else {
+          // sensore sostituito: il vecchio resta nello storico ma non è più accettato dal ricevitore
+          await client.query("UPDATE devices SET enabled = FALSE WHERE vehicle_id = $1", [id]);
+          const label = card?.plate ?? (await client.query("SELECT COALESCE(plate, name) AS l FROM vehicles WHERE id = $1", [id])).rows[0].l;
+          await client.query(
+            "INSERT INTO devices (imei, vehicle_id, label, usage_start) VALUES ($1,$2,$3,(NOW() AT TIME ZONE 'Europe/Rome')::date)",
+            [imei, id, label]
+          );
+        }
+      }
+    }
 
     const fileId = Number(body.file_id);
     if (Number.isFinite(fileId) && fileId > 0) {

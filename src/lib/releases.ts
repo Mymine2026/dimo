@@ -10,6 +10,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.10.3",
+    date: "26/10/2026",
+    title: "Targa accanto al nome e sensore associabile",
+    notes: [
+      "Nell'elenco e nella pagina del veicolo la targa letta dal libretto compare accanto al nome; la ricerca trova anche per targa",
+      "Un veicolo creato dal libretto esiste anche senza sensore (\"senza sensore\"): il sensore Ruptela si associa dopo, inserendo l'IMEI nella Scheda veicolo, e può essere sostituito o scollegato",
+      "Del sensore si salvano ora tutti i segnali ricevuti (esclusi quelli non disponibili), per decidere con calma quali visualizzare",
+    ],
+  },
+  {
     version: "1.10.2",
     date: "26/10/2026",
     title: "Documenti collegati ai veicoli della flotta",

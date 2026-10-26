@@ -224,6 +224,7 @@ export default function VehicleDetailPage() {
   const [range,          setRange]          = useState<Range>("30d");
   const [neverConnected, setNeverConnected] = useState(false);
   const [vehicleName,    setVehicleName]    = useState<string>(`Veicolo #${tokenId}`);
+  const [vehiclePlate,   setVehiclePlate]   = useState<string | null>(null);
   const [monitoringStart, setMonitoringStart] = useState<string | null>(null);
   const [gpsTrack,        setGpsTrack]        = useState<LocationPoint[]>([]);
   const firstLoad = useRef(true);
@@ -234,6 +235,7 @@ export default function VehicleDetailPage() {
       const data = await res.json();
       if (res.ok && Array.isArray(data)) {
         const v = data.find((v: { tokenId: number }) => String(v.tokenId) === String(tokenId));
+        setVehiclePlate(v?.plate ?? null);
         if (v?.definition) {
           setVehicleName(`${v.definition.make} ${v.definition.model}`);
         }
@@ -476,6 +478,11 @@ export default function VehicleDetailPage() {
           <div>
             <h1 className="font-bold text-white leading-tight" style={{ fontSize: 24 }}>
               {vehicleName}
+              {vehiclePlate && (
+                <span className="font-semibold" style={{ marginLeft: 10, fontSize: 13, padding: "3px 9px", borderRadius: 8, background: "#292a2e", color: "#c4c7c8", letterSpacing: "0.05em", verticalAlign: "middle" }}>
+                  {vehiclePlate}
+                </span>
+              )}
             </h1>
             <p style={{ fontSize: 12, color: "#8e9192", marginTop: 1 }}>Telemetria</p>
           </div>
@@ -507,7 +514,7 @@ export default function VehicleDetailPage() {
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-bold leading-tight truncate" style={{ fontSize: 17, color: "#111827" }}>
-            {vehicleName}
+            {vehicleName}{vehiclePlate ? ` · ${vehiclePlate}` : ""}
           </p>
           <p className="text-sm truncate" style={{ color: "#6b7280", marginTop: 2 }}>
             {Number(tokenId) > 0 ? `Token #${tokenId}` : "Sensore diretto"}
@@ -562,7 +569,19 @@ export default function VehicleDetailPage() {
       )}
 
       {/* ── Never connected banner ─────────────────────────────────────── */}
-      {!loading && neverConnected && DIMO_CONFIG_ID && (
+      {!loading && neverConnected && Number(tokenId) <= 0 && (
+        <div className="flex items-center gap-3 rounded-2xl p-4 mb-4" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.18)" }}>
+          <Plug className="w-4 h-4 shrink-0" style={{ color: "#fbbf24" }} />
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "#fcd34d" }}>Nessun dato ricevuto</p>
+            <p className="text-xs mt-0.5" style={{ color: "#d6b45a" }}>
+              Il veicolo non ha ancora un sensore associato (o non ha ancora trasmesso). Inserisci l&apos;IMEI nella Scheda veicolo.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!loading && neverConnected && Number(tokenId) > 0 && DIMO_CONFIG_ID && (
         <div
           className="flex items-center justify-between rounded-2xl p-4 mb-4"
           style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.18)" }}

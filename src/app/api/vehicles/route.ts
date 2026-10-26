@@ -39,6 +39,8 @@ type DimoVehicle = {
   syntheticDevice?: { tokenId: number; address: string } | null;
   aftermarketDevice?: { tokenId: number; address: string } | null;
   _source?: "dimo" | "db";
+  plate?: string | null;
+  sensor?: boolean;
 };
 
 type DbVehicleRow = {
@@ -46,6 +48,7 @@ type DbVehicleRow = {
   name: string;
   plate: string;
   company_id: number | null;
+  has_sensor: boolean;
 };
 
 const OWNER_ADDRESSES = [
@@ -64,9 +67,11 @@ async function fetchVehiclesForOwner(owner: string): Promise<DimoVehicle[]> {
 
 function mergeVehicles(dimoVehicles: DimoVehicle[], dbRows: DbVehicleRow[]): DimoVehicle[] {
   const byTokenId = new Map<number, DimoVehicle>();
+  const dbByToken = new Map(dbRows.map((r) => [Number(r.token_id), r]));
 
   for (const v of dimoVehicles) {
-    byTokenId.set(Number(v.tokenId), { ...v, _source: "dimo" });
+    const row = dbByToken.get(Number(v.tokenId));
+    byTokenId.set(Number(v.tokenId), { ...v, _source: "dimo", plate: row?.plate ?? null, sensor: !!row?.has_sensor });
   }
 
   for (const row of dbRows) {
@@ -78,6 +83,8 @@ function mergeVehicles(dimoVehicles: DimoVehicle[], dbRows: DbVehicleRow[]): Dim
         definition: row.name
           ? { make: row.name, model: "", year: 0 }
           : null,
+        plate: row.plate ?? null,
+        sensor: !!row.has_sensor,
         _source: "db",
       });
     }
@@ -112,7 +119,7 @@ export async function GET(req: Request) {
 
   if (role === "super_admin") {
     const { rows: allDbRows } = await pool.query<DbVehicleRow>(
-      "SELECT token_id, name, plate, company_id FROM vehicles"
+      "SELECT v.token_id, v.name, v.plate, v.company_id, EXISTS (SELECT 1 FROM devices d WHERE d.vehicle_id = v.id AND d.enabled) AS has_sensor FROM vehicles v"
     );
     // Solo i veicoli registrati in flotta — esclude i mezzi di test presenti
     // sul wallet DIMO ma mai aggiunti alla tabella vehicles (es. BMW X5).
@@ -125,14 +132,14 @@ export async function GET(req: Request) {
 
   if (role === "admin" && companyId) {
     const { rows } = await pool.query<DbVehicleRow>(
-      "SELECT token_id, name, plate, company_id FROM vehicles WHERE company_id = $1",
+      "SELECT v.token_id, v.name, v.plate, v.company_id, EXISTS (SELECT 1 FROM devices d WHERE d.vehicle_id = v.id AND d.enabled) AS has_sensor FROM vehicles v WHERE v.company_id = $1",
       [companyId]
     );
     dbRows = rows;
   } else {
     if (!userId) return NextResponse.json([]);
     const { rows } = await pool.query<DbVehicleRow>(
-      `SELECT v.token_id, v.name, v.plate, v.company_id FROM vehicles v
+      `SELECT v.token_id, v.name, v.plate, v.company_id, EXISTS (SELECT 1 FROM devices d WHERE d.vehicle_id = v.id AND d.enabled) AS has_sensor FROM vehicles v
        JOIN vehicle_users vu ON vu.vehicle_id = v.id
        WHERE vu.user_id = $1`,
       [userId]
