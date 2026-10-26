@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   }
 
   const { rows: vehicles } = await pool.query<{ id: number; token_id: number }>(
-    "SELECT id, token_id FROM vehicles"
+    "SELECT id, token_id FROM vehicles WHERE token_id > 0" // i veicoli senza token DIMO ricevono i dati dal sensore diretto
   );
 
   let inserted = 0;

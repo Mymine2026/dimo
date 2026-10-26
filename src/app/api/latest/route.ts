@@ -56,6 +56,9 @@ export async function GET(req: Request) {
     // DB unavailable or vehicle not in `vehicles` yet — fall through to live DIMO call
   }
 
+  // Veicolo senza token DIMO (creato dal libretto) e senza dati del sensore: nessun segnale da mostrare.
+  if (parseInt(tokenId) <= 0) return NextResponse.json({});
+
   try {
     const flattened = await getLatestSignals(parseInt(tokenId));
     return NextResponse.json(flattened);

@@ -21,6 +21,7 @@ const files = [
   "005_create_maintenance_plans.sql",
   "006_create_vehicle_assignments.sql",
   "007_create_devices.sql",
+  "008_create_vehicle_cards.sql",
 ];
 
 for (const file of files) {

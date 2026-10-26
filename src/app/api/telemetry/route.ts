@@ -164,6 +164,9 @@ export async function GET(req: Request) {
     }
   }
 
+  // Veicolo creato dal libretto, senza token DIMO (token interno negativo): niente da chiedere a DIMO.
+  if (parseInt(tokenId) <= 0) return NextResponse.json([]);
+
   try {
     const devJwt     = await getDeveloperJwt();
     const vehicleJwt = await getVehicleJwt(devJwt, parseInt(tokenId));

@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   if (!await requireSuperAdmin()) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { token_id, name, plate, company_id, user_ids } = await req.json();
-  if (!token_id) return NextResponse.json({ error: "token_id obbligatorio" }, { status: 400 });
+  // Il token DIMO è facoltativo: senza, il veicolo riceve un token interno negativo (sensori Ruptela diretti).
   if (!name?.trim()) return NextResponse.json({ error: "nome obbligatorio" }, { status: 400 });
 
   const client = await pool.connect();
@@ -50,8 +50,8 @@ export async function POST(req: Request) {
     await client.query("BEGIN");
     const { rows } = await client.query(
       `INSERT INTO vehicles (token_id, name, plate, company_id)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [Number(token_id), name.trim(), plate?.trim() ?? null, company_id ?? null]
+       VALUES (COALESCE($1, -nextval('vehicle_local_token_seq')), $2, $3, $4) RETURNING *`,
+      [token_id ? Number(token_id) : null, name.trim(), plate?.trim() ?? null, company_id ?? null]
     );
     const vehicle = rows[0];
     if (Array.isArray(user_ids)) {

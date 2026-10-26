@@ -10,6 +10,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.10.0",
+    date: "26/10/2026",
+    title: "Veicoli e scheda dal libretto",
+    notes: [
+      "Nuovi veicoli da libretto: in Amministrazione, dalla riga dell'azienda o dalla tab Veicoli, si caricano le foto o i PDF dei libretti; il modello di Brainy legge i dati, li si controlla e l'app crea il veicolo con la sua scheda",
+      "Scheda veicolo nella pagina del veicolo: dati tecnici, scadenza della revisione (stimata se non letta dal libretto), intestatario visibile solo a chi gestisce l'azienda e copia del libretto",
+      "Si può caricare un nuovo libretto anche su un veicolo esistente, e collegare subito il sensore Ruptela con l'IMEI",
+      "Il token DIMO diventa facoltativo: i veicoli senza token ricevono i dati solo dal sensore diretto",
+    ],
+  },
+  {
     version: "1.9.1",
     date: "26/10/2026",
     title: "Dati del sensore nella scheda veicolo",

@@ -19,6 +19,7 @@ import {
   Truck, Activity, BarChart2,
 } from "lucide-react";
 import Link from "next/link";
+import VehicleSheet from "@/components/VehicleSheet";
 
 const DIMO_CONFIG_ID = process.env.NEXT_PUBLIC_DIMO_CONFIG_ID ?? "";
 function dimoConnectUrl() {
@@ -509,7 +510,7 @@ export default function VehicleDetailPage() {
             {vehicleName}
           </p>
           <p className="text-sm truncate" style={{ color: "#6b7280", marginTop: 2 }}>
-            Token #{tokenId}
+            {Number(tokenId) > 0 ? `Token #${tokenId}` : "Sensore diretto"}
           </p>
         </div>
         {latest && (
@@ -521,6 +522,8 @@ export default function VehicleDetailPage() {
           </div>
         )}
       </div>
+
+      <VehicleSheet tokenId={String(tokenId)} />
 
       {/* ── Range pills ────────────────────────────────────────────────── */}
       <div className="mb-2">

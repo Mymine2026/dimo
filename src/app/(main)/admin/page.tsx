@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   Building2, Users, Truck, Plus, Trash2, X,
-  Loader2, AlertCircle, Pencil,
+  Loader2, AlertCircle, Pencil, FileUp,
 } from "lucide-react";
+import LibrettoImport from "@/components/LibrettoImport";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -172,6 +173,7 @@ function CompaniesTab({ onRefresh }: { onRefresh: () => void }) {
   const [target,  setTarget]  = useState<Company | null>(null);
   const [name,    setName]    = useState("");
   const [saving,  setSaving]  = useState(false);
+  const [libretti, setLibretti] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -230,11 +232,19 @@ function CompaniesTab({ onRefresh }: { onRefresh: () => void }) {
                 {c.user_count} utent{c.user_count === 1 ? "e" : "i"} · {c.vehicle_count} veicol{c.vehicle_count === 1 ? "o" : "i"}
               </p>
             </div>
+            <button onClick={() => setLibretti(c.id)} title="Carica libretti" className="p-1.5 rounded-lg active:opacity-60" style={{ color: "#8e9192" }}>
+              <FileUp className="w-4 h-4" />
+            </button>
             <RowActions onEdit={() => openEdit(c)} onDelete={() => del(c.id)} />
           </div>
         ))}
         {!loading && data.length === 0 && <EmptyState label="Nessuna azienda" />}
       </div>
+
+      {libretti != null && (
+        <LibrettoImport companies={data.map(c => ({ id: c.id, name: c.name }))} companyId={libretti}
+          onClose={() => setLibretti(null)} onDone={() => { load(); onRefresh(); }} />
+      )}
 
       {(modal === "create" || modal === "edit") && (
         <Modal title={modal === "create" ? "Nuova azienda" : "Modifica azienda"}
@@ -264,6 +274,7 @@ function VehiclesTab({ companies, allUsers, onRefresh }: {
   const [form,       setForm]       = useState(EMPTY_V);
   const [selUsers,   setSelUsers]   = useState<number[]>([]);
   const [saving,     setSaving]     = useState(false);
+  const [libretti,   setLibretti]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -297,7 +308,7 @@ function VehiclesTab({ companies, allUsers, onRefresh }: {
     setSaving(true);
     setError(null);
     const body = {
-      token_id: Number(form.token_id),
+      token_id: form.token_id ? Number(form.token_id) : null,
       name: form.name,
       plate: form.plate || null,
       company_id: form.company_id ? Number(form.company_id) : null,
@@ -321,11 +332,21 @@ function VehiclesTab({ companies, allUsers, onRefresh }: {
     <>
       <div className="flex items-center justify-between mb-4">
         <p style={{ fontSize: 13, color: "#8e9192" }}>{data.length} veicol{data.length === 1 ? "o" : "i"}</p>
+        <div className="flex items-center gap-2">
+        <button onClick={() => setLibretti(true)} className="flex items-center gap-1.5 font-bold"
+          style={{ background: "#292a2e", color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13 }}>
+          <FileUp className="w-3.5 h-3.5" /> Libretti
+        </button>
         <button onClick={openCreate} className="flex items-center gap-1.5 font-bold"
           style={{ background: "#fff", color: "#000", borderRadius: 12, padding: "8px 14px", fontSize: 13 }}>
           <Plus className="w-3.5 h-3.5" /> Nuovo
         </button>
+        </div>
       </div>
+      {libretti && (
+        <LibrettoImport companies={companies.map(c => ({ id: c.id, name: c.name }))}
+          onClose={() => setLibretti(false)} onDone={() => { load(); onRefresh(); }} />
+      )}
       {loading && <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin" style={{ color: "#8e9192" }} /></div>}
       {error && <ErrBanner msg={error} />}
       <div className="flex flex-col gap-2">
@@ -341,7 +362,7 @@ function VehiclesTab({ companies, allUsers, onRefresh }: {
                   {v.plate && <span style={{ color: "#8e9192" }}> · {v.plate}</span>}
                 </p>
                 <p style={{ fontSize: 11, color: "#8e9192", marginTop: 2 }}>
-                  #{v.token_id} · {v.company_name ?? "—"}
+                  {v.token_id > 0 ? `#${v.token_id}` : "senza DIMO"} · {v.company_name ?? "—"}
                 </p>
                 {v.users.length > 0 && (
                   <p style={{ fontSize: 11, color: "#60a5fa", marginTop: 2 }}>
@@ -360,10 +381,10 @@ function VehiclesTab({ companies, allUsers, onRefresh }: {
         <Modal title={modal === "create" ? "Nuovo veicolo" : "Modifica veicolo"}
           onClose={close} onSubmit={save} loading={saving}
           submitLabel={modal === "create" ? "Crea" : "Salva"}>
-          <Field label="Token ID (DIMO)">
+          <Field label="Token ID (DIMO, facoltativo)">
             <FInput type="number" value={form.token_id}
               onChange={e => setForm(f => ({ ...f, token_id: e.target.value }))}
-              placeholder="es. 188611" required autoFocus />
+              placeholder="vuoto = solo sensore diretto" autoFocus />
           </Field>
           <Field label="Nome veicolo">
             <FInput value={form.name}
@@ -551,7 +572,7 @@ function UsersTab({ companies, allVehicles, onRefresh }: {
               items={allVehicles}
               selectedIds={selVehs}
               onToggle={toggleVeh}
-              renderLabel={v => `${v.name} · #${v.token_id}`}
+              renderLabel={v => `${v.name} · ${v.token_id > 0 ? "#" + v.token_id : "senza DIMO"}`}
             />
           </Field>
         </Modal>
@@ -581,7 +602,7 @@ function UsersTab({ companies, allVehicles, onRefresh }: {
               items={allVehicles}
               selectedIds={selVehs}
               onToggle={toggleVeh}
-              renderLabel={v => `${v.name} · #${v.token_id}`}
+              renderLabel={v => `${v.name} · ${v.token_id > 0 ? "#" + v.token_id : "senza DIMO"}`}
             />
           </Field>
           <Field label="Nuova password (lascia vuoto per non cambiare)">
