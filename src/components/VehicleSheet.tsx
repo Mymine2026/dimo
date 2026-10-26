@@ -67,7 +67,7 @@ export default function VehicleSheet({ tokenId }: { tokenId: string }) {
       fd.append("file", file);
       if (data.vehicle.company_id) fd.append("company_id", String(data.vehicle.company_id));
       const r = await fetch("/api/vehicles/libretto/extract", { method: "POST", body: fd });
-      const d = await r.json();
+      const d = await r.json().catch(() => ({ error: `Errore del server (${r.status}): riprova tra un minuto` }));
       if (!r.ok) throw new Error(d.error ?? "Errore");
       setFields(d.fields); setFound(d.found); setFileId(d.file_id);
       setMsg(d.warning ?? "Controlla i dati letti e salva.");
@@ -83,7 +83,7 @@ export default function VehicleSheet({ tokenId }: { tokenId: string }) {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tokenId: Number(tokenId), imei }),
       });
-      const d = await r.json();
+      const d = await r.json().catch(() => ({ error: `Errore del server (${r.status}): riprova tra un minuto` }));
       if (!r.ok) throw new Error(d.error ?? "Errore");
       setMsg(imei.trim() ? "Sensore associato: i dati compariranno alla prima trasmissione." : "Sensore scollegato.");
       await load();
@@ -98,7 +98,7 @@ export default function VehicleSheet({ tokenId }: { tokenId: string }) {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tokenId: Number(tokenId), fields, file_id: fileId }),
       });
-      const d = await r.json();
+      const d = await r.json().catch(() => ({ error: `Errore del server (${r.status}): riprova tra un minuto` }));
       if (!r.ok) throw new Error(d.error ?? "Errore");
       setEdit(false); setFileId(null); setFound(undefined); setMsg(null);
       await load();

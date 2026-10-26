@@ -107,7 +107,7 @@ export default function LibrettoImport({ companies, companyId, onClose, onDone }
       fd.append("company_id", String(company));
       try {
         const r = await fetch("/api/vehicles/libretto/extract", { method: "POST", body: fd });
-        const d = await r.json();
+        const d = await r.json().catch(() => ({ error: `Errore del server (${r.status}): riprova tra un minuto` }));
         if (!r.ok) throw new Error(d.error ?? "Errore");
         patch(fresh[n].key, { status: "ready", file_id: d.file_id, fields: d.fields, found: d.found, warning: d.warning });
       } catch (e) {
@@ -126,7 +126,7 @@ export default function LibrettoImport({ companies, companyId, onClose, onDone }
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company_id: company, items: ready.map(i => ({ file_id: i.file_id, fields: i.fields, imei: i.imei })) }),
       });
-      const d = await r.json();
+      const d = await r.json().catch(() => ({ error: `Errore del server (${r.status}): riprova tra un minuto` }));
       if (!r.ok) throw new Error(d.error ?? "Errore");
       for (const res of d.results as { file_id: number; ok: boolean; error?: string }[]) {
         const it = items.find(i => i.file_id === res.file_id);

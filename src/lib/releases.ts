@@ -10,6 +10,15 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.10.4",
+    date: "26/10/2026",
+    title: "Lettura libretti più robusta",
+    notes: [
+      "Corretto l'errore \"Payload too large\" di Brainy: le immagini del libretto vengono ridotte a una dimensione accettata e, se rifiutate, si riprova automaticamente più piccole",
+      "Se il server risponde con un errore, le schermate dei libretti mostrano un messaggio leggibile",
+    ],
+  },
+  {
     version: "1.10.3",
     date: "26/10/2026",
     title: "Targa accanto al nome e sensore associabile",

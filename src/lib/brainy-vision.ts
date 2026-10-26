@@ -11,7 +11,17 @@ const run = promisify(execFile);
 // Stesso schema già usato dal servizio fv-check. Variabili: BRAINY_BASE, BRAINY_ACCESS_KEY, BRAINY_SECRET_KEY,
 // facoltativa BRAINY_VISION_MODEL.
 const MODEL = () => process.env.BRAINY_VISION_MODEL || "Qwen/Qwen3.8-27B";
-const MAX_SIDE = 1800;
+// Brainy rifiuta le richieste troppo grandi: provato il 26/10, oltre ~700 KB di immagini risponde 413 (un libretto PDF di
+// 2 pagine a 1800 px pesava 777 KB). Si parte da ~300 KB, ancora leggibili, e se serve si riprova più piccole.
+const STEPS: { side: number; quality: number }[] = [
+  { side: 1500, quality: 75 },
+  { side: 1200, quality: 68 },
+  { side: 900, quality: 60 },
+];
+
+class BrainyError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
 
 let token: string | null = null;
 
@@ -31,10 +41,10 @@ async function brainyToken(force = false): Promise<string> {
 }
 
 // Foto o pagina PDF → JPEG con lato massimo contenuto (leggibile ma non enorme per il modello).
-async function toJpeg(buf: Buffer): Promise<Buffer> {
+async function toJpeg(buf: Buffer, side: number, quality: number): Promise<Buffer> {
   const sharp = (await import("sharp")).default;
-  return sharp(buf).rotate().resize({ width: MAX_SIDE, height: MAX_SIDE, fit: "inside", withoutEnlargement: false })
-    .jpeg({ quality: 88 }).toBuffer();
+  return sharp(buf).rotate().resize({ width: side, height: side, fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality, mozjpeg: true }).toBuffer();
 }
 
 async function pdfPages(buf: Buffer): Promise<Buffer[]> {
@@ -63,7 +73,7 @@ async function ask(images: Buffer[], retry = true): Promise<string> {
     signal: AbortSignal.timeout(120_000),
   });
   if (res.status === 401 && retry) { await brainyToken(true); return ask(images, false); }
-  if (!res.ok) throw new Error(`Errore Brainy (${res.status}): ${(await res.text()).slice(0, 150)}`);
+  if (!res.ok) throw new BrainyError(`Errore Brainy (${res.status}): ${(await res.text()).slice(0, 150)}`, res.status);
   const data = await res.json();
   return data?.choices?.[0]?.message?.content ?? "";
 }
@@ -71,9 +81,17 @@ async function ask(images: Buffer[], retry = true): Promise<string> {
 export async function readLibretto(buf: Buffer, mime: string): Promise<LibrettoFields> {
   const pages = mime === "application/pdf" ? await pdfPages(buf) : [buf];
   if (!pages.length) throw new Error("Nessuna pagina leggibile nel file");
-  const images = await Promise.all(pages.map(toJpeg));
-
-  const text = await ask(images);
+  let text = "";
+  for (let i = 0; i < STEPS.length; i++) {
+    const images = await Promise.all(pages.map((p) => toJpeg(p, STEPS[i].side, STEPS[i].quality)));
+    try {
+      text = await ask(images);
+      break;
+    } catch (e) {
+      if (e instanceof BrainyError && (e.status === 413 || e.status === 400) && i < STEPS.length - 1) continue; // richiesta rifiutata: riprova più piccola
+      throw e;
+    }
+  }
   const i = text.indexOf("{"), j = text.lastIndexOf("}");
   if (i < 0 || j <= i) throw new Error("Risposta del modello senza dati");
   let raw: Record<string, unknown>;
