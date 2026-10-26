@@ -17,12 +17,13 @@ export async function GET() {
       c.id,
       c.name,
       c.created_at,
-      COUNT(DISTINCT u.id)::int  AS user_count,
-      COUNT(DISTINCT v.id)::int  AS vehicle_count
+      (SELECT COUNT(*)::int FROM users u    WHERE u.company_id = c.id) AS user_count,
+      (SELECT COUNT(*)::int FROM vehicles v WHERE v.company_id = c.id) AS vehicle_count,
+      COALESCE((SELECT json_agg(json_build_object('id', v.id, 'name', v.name, 'plate', v.plate, 'token_id', v.token_id) ORDER BY v.name)
+                  FROM vehicles v WHERE v.company_id = c.id), '[]'::json) AS vehicles,
+      COALESCE((SELECT json_agg(json_build_object('id', u.id, 'email', u.email, 'role', u.role) ORDER BY u.email)
+                  FROM users u WHERE u.company_id = c.id), '[]'::json) AS users
     FROM companies c
-    LEFT JOIN users         u ON u.company_id = c.id
-    LEFT JOIN admin_vehicles v ON v.company_id = c.id
-    GROUP BY c.id
     ORDER BY c.created_at DESC
   `);
   return NextResponse.json(rows);

@@ -10,6 +10,15 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.10.1",
+    date: "26/10/2026",
+    title: "Aziende: elenco di veicoli e utenti",
+    notes: [
+      "Nella tab Aziende ogni riga si apre e mostra i veicoli (nome, targa, token) e gli utenti dell'azienda",
+      "Corretto il conteggio dei veicoli per azienda, che leggeva una tabella vecchia e non mostrava i veicoli assegnati",
+    ],
+  },
+  {
     version: "1.10.0",
     date: "26/10/2026",
     title: "Veicoli e scheda dal libretto",

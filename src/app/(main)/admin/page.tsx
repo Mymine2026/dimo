@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   Building2, Users, Truck, Plus, Trash2, X,
-  Loader2, AlertCircle, Pencil, FileUp,
+  Loader2, AlertCircle, Pencil, FileUp, ChevronDown,
 } from "lucide-react";
 import LibrettoImport from "@/components/LibrettoImport";
 
@@ -14,6 +14,8 @@ import LibrettoImport from "@/components/LibrettoImport";
 interface Company {
   id: number; name: string; created_at: string;
   user_count: number; vehicle_count: number;
+  vehicles: { id: number; name: string; plate: string | null; token_id: number }[];
+  users: { id: number; email: string; role: string }[];
 }
 interface UserRef    { id: number; email: string; }
 interface VehicleRef { id: number; name: string; token_id: number; }
@@ -174,6 +176,7 @@ function CompaniesTab({ onRefresh }: { onRefresh: () => void }) {
   const [name,    setName]    = useState("");
   const [saving,  setSaving]  = useState(false);
   const [libretti, setLibretti] = useState<number | null>(null);
+  const [openIds, setOpenIds] = useState<number[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -222,7 +225,10 @@ function CompaniesTab({ onRefresh }: { onRefresh: () => void }) {
       {error && <ErrBanner msg={error} />}
       <div className="flex flex-col gap-2">
         {data.map(c => (
-          <div key={c.id} className="flex items-center gap-3" style={{ background: "#1e1f23", borderRadius: 14, padding: "12px 14px" }}>
+          <div key={c.id} style={{ background: "#1e1f23", borderRadius: 14, padding: "12px 14px" }}>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => setOpenIds(o => o.includes(c.id) ? o.filter(x => x !== c.id) : [...o, c.id])}
+              className="flex items-center gap-3 flex-1 min-w-0 text-left" aria-expanded={openIds.includes(c.id)}>
             <div className="flex items-center justify-center shrink-0" style={{ width: 38, height: 38, background: "#292a2e", borderRadius: 10 }}>
               <Building2 className="w-4 h-4" style={{ color: "#8e9192" }} />
             </div>
@@ -232,10 +238,34 @@ function CompaniesTab({ onRefresh }: { onRefresh: () => void }) {
                 {c.user_count} utent{c.user_count === 1 ? "e" : "i"} · {c.vehicle_count} veicol{c.vehicle_count === 1 ? "o" : "i"}
               </p>
             </div>
+            <ChevronDown className="w-4 h-4 shrink-0" style={{ color: "#8e9192", transform: openIds.includes(c.id) ? "rotate(180deg)" : undefined }} />
+            </button>
             <button onClick={() => setLibretti(c.id)} title="Carica libretti" className="p-1.5 rounded-lg active:opacity-60" style={{ color: "#8e9192" }}>
               <FileUp className="w-4 h-4" />
             </button>
             <RowActions onEdit={() => openEdit(c)} onDelete={() => del(c.id)} />
+          </div>
+          {openIds.includes(c.id) && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #292a2e" }} className="flex flex-col gap-3">
+              <div>
+                <p className="font-semibold uppercase tracking-widest" style={{ fontSize: 9, color: "#8e9192", marginBottom: 6 }}>Veicoli</p>
+                {c.vehicles.length === 0 && <p style={{ fontSize: 12, color: "#8e9192" }}>Nessun veicolo</p>}
+                {c.vehicles.map(v => (
+                  <p key={v.id} className="text-white" style={{ fontSize: 13, padding: "3px 0" }}>
+                    {v.name}{v.plate ? ` · ${v.plate}` : ""}
+                    <span style={{ color: "#8e9192", fontSize: 11 }}> · {v.token_id > 0 ? `#${v.token_id}` : "senza DIMO"}</span>
+                  </p>
+                ))}
+              </div>
+              <div>
+                <p className="font-semibold uppercase tracking-widest" style={{ fontSize: 9, color: "#8e9192", marginBottom: 6 }}>Utenti</p>
+                {c.users.length === 0 && <p style={{ fontSize: 12, color: "#8e9192" }}>Nessun utente</p>}
+                {c.users.map(u => (
+                  <p key={u.id} className="text-white flex items-center gap-2" style={{ fontSize: 13, padding: "3px 0" }}>{u.email} <RoleBadge role={u.role} /></p>
+                ))}
+              </div>
+            </div>
+          )}
           </div>
         ))}
         {!loading && data.length === 0 && <EmptyState label="Nessuna azienda" />}
