@@ -10,6 +10,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.10.2",
+    date: "26/10/2026",
+    title: "Documenti collegati ai veicoli della flotta",
+    notes: [
+      "Nella pagina Documenti il menu dei veicoli mostra i veicoli registrati in flotta (anche quelli senza token DIMO); spariscono le voci di prova della tabella vecchia",
+      "I documenti sono visibili a chi ha accesso al veicolo, oltre a chi li ha caricati e all'azienda; il super admin vede tutto",
+      "Un documento si può collegare solo a veicoli a cui si ha accesso",
+    ],
+  },
+  {
     version: "1.10.1",
     date: "26/10/2026",
     title: "Aziende: elenco di veicoli e utenti",

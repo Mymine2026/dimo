@@ -69,9 +69,9 @@ export async function attachLibretto(
 ) {
   await client.query("UPDATE libretto_files SET vehicle_id = $1 WHERE id = $2", [opts.vehicleId, opts.fileId]);
   const { rows } = await client.query(
-    `INSERT INTO documents (vehicle_dimo_token, user_id, company_id, name, type, file_url)
-     VALUES ($1,$2,$3,$4,'libretto',$5) RETURNING id`,
-    [String(opts.token), opts.userId, opts.companyId, `Libretto ${opts.fileName}`.slice(0, 250), `/api/vehicles/libretto/file/${opts.fileId}`]
+    `INSERT INTO documents (vehicle_id, vehicle_dimo_token, user_id, company_id, name, type, file_url)
+     VALUES ($6,$1,$2,$3,$4,'libretto',$5) RETURNING id`,
+    [String(opts.token), opts.userId, opts.companyId, `Libretto ${opts.fileName}`.slice(0, 250), `/api/vehicles/libretto/file/${opts.fileId}`, opts.vehicleId]
   );
   await client.query("UPDATE vehicle_cards SET libretto_document_id = $1 WHERE vehicle_id = $2", [rows[0].id, opts.vehicleId]);
 }
