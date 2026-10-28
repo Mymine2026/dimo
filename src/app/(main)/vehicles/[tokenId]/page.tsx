@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import VehicleSheet from "@/components/VehicleSheet";
+import ContractCard from "@/components/ContractCard";
 
 const DIMO_CONFIG_ID = process.env.NEXT_PUBLIC_DIMO_CONFIG_ID ?? "";
 function dimoConnectUrl() {
@@ -178,6 +179,39 @@ function MetricCard({ label, value, subtitle, info }: { label: string; value: st
       {subtitle && (
         <p style={{ fontSize: 11, color: "#8e9192", marginTop: info ? 2 : 8 }}>{subtitle}</p>
       )}
+    </div>
+  );
+}
+
+// ─── riquadro di una misura: valore attuale, minimo/media/massimo e andamento; si ingrandisce con un clic ───
+
+function MetricTile({ icon: Icon, color, title, unit, signals, field, range, note }: {
+  icon: React.ElementType; color: string; title: string; unit: string;
+  signals: TelemetrySignal[]; field: keyof TelemetrySignal; range: Range; note?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const vals = signals.map((s) => s[field]).filter((v): v is number => typeof v === "number" && isFinite(v));
+  const last = vals.length ? vals[vals.length - 1] : null;
+  const min = vals.length ? Math.min(...vals) : null;
+  const max = vals.length ? Math.max(...vals) : null;
+  const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  const f = (n: number | null) => (n == null ? "—" : Math.round(n).toLocaleString("it-IT"));
+  return (
+    <div style={{ background: "#1e1f23", borderRadius: 16, padding: 14, gridColumn: open ? "1 / -1" : undefined, minWidth: 0 }}>
+      <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
+        <div className="flex items-center justify-center" style={{ width: 22, height: 22, background: `${color}22`, borderRadius: 6 }}>
+          <Icon className="w-3.5 h-3.5" style={{ color }} />
+        </div>
+        <h3 className="text-xs font-semibold flex-1" style={{ color: "#c4c7c8" }}>{title}</h3>
+        <button type="button" onClick={() => setOpen((o) => !o)} style={{ fontSize: 11, color: "#8e9192" }}>{open ? "Riduci" : "Ingrandisci"}</button>
+      </div>
+      <div className="flex items-baseline gap-1">
+        <span className="font-semibold text-white" style={{ fontSize: 24 }}>{f(last)}</span>
+        <span style={{ fontSize: 12, color: "#8e9192" }}>{unit}</span>
+      </div>
+      <p style={{ fontSize: 11, color: "#8e9192", marginBottom: 4 }}>min {f(min)} · media {f(avg)} · max {f(max)}</p>
+      <SignalChart signals={signals} field={field} label={title} color={color} unit={unit} range={range} height={open ? 220 : 80} compact={!open} />
+      {open && note && <p style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>{note}</p>}
     </div>
   );
 }
@@ -530,6 +564,7 @@ export default function VehicleDetailPage() {
         )}
       </div>
 
+      <ContractCard tokenId={String(tokenId)} />
       <VehicleSheet tokenId={String(tokenId)} />
 
       {/* ── Range pills ────────────────────────────────────────────────── */}
@@ -794,26 +829,16 @@ export default function VehicleDetailPage() {
             </p>
           ) : (
             <>
-              <ChartPanel icon={Gauge}    iconColor="#3b82f6" title="Velocità (km/h)">
-                <SignalChart signals={speedSignals}   field="speed"             label="Speed"   color="#3b82f6" unit="km/h" range={range} />
-              </ChartPanel>
-              <ChartPanel icon={Droplets} iconColor="#f59e0b" title="Livello carburante (%)">
-                <SignalChart signals={fuelSignals}    field="fuelLevel"         label="Fuel"    color="#f59e0b" unit="%"    range={range} />
-              </ChartPanel>
-              <ChartPanel icon={Zap}      iconColor="#8b5cf6" title="Giri motore (RPM)">
-                <SignalChart signals={rpmSignals}     field="engineRpm"         label="RPM"     color="#8b5cf6" unit="rpm"  range={range} />
-              </ChartPanel>
-              <ChartPanel icon={Thermometer} iconColor="#ef4444" title="Liquido raffreddamento (°C)">
-                <SignalChart signals={coolantSignals} field="engineCoolantTemp" label="Coolant" color="#ef4444" unit="°C"   range={range} />
-              </ChartPanel>
-              {torqueSignals.length > 0 && (
-                <ChartPanel icon={BarChart2} iconColor="#f97316" title="Coppia motore (%)">
-                  <SignalChart signals={torqueSignals} field="torquePercent" label="Torque" color="#f97316" unit="%" range={range} />
-                  <p style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>
-                    Scala –125% (freno motore massimo) · 0% (minimo) · +125% (trazione massima). Valori negativi indicano che il motore sta frenando il veicolo (es. in discesa o in decelerazione).
-                  </p>
-                </ChartPanel>
-              )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginBottom: 12 }}>
+                <MetricTile icon={Gauge}       color="#3b82f6" title="Velocità"            unit="km/h" signals={speedSignals}   field="speed"             range={range} />
+                <MetricTile icon={Droplets}    color="#f59e0b" title="Carburante"          unit="%"    signals={fuelSignals}    field="fuelLevel"         range={range} />
+                <MetricTile icon={Zap}         color="#8b5cf6" title="Giri motore"         unit="rpm"  signals={rpmSignals}     field="engineRpm"         range={range} />
+                <MetricTile icon={Thermometer} color="#ef4444" title="Temperatura liquido" unit="°C"   signals={coolantSignals} field="engineCoolantTemp" range={range} />
+                {torqueSignals.length > 0 && (
+                  <MetricTile icon={BarChart2} color="#f97316" title="Coppia motore" unit="%" signals={torqueSignals} field="torquePercent" range={range}
+                    note="Scala –125% (freno motore massimo) · 0% (minimo) · +125% (trazione massima). Valori negativi indicano che il motore sta frenando il veicolo (es. in discesa o in decelerazione)." />
+                )}
+              </div>
             </>
           )}
 

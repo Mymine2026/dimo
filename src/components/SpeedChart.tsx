@@ -13,9 +13,11 @@ interface Props {
   unit: string;
   range?: Range;
   transform?: (v: number) => number;
+  height?: number;
+  compact?: boolean; // riquadro piccolo: senza griglia e assi
 }
 
-export function SignalChart({ signals, field, label, color, unit, range = "24h", transform }: Props) {
+export function SignalChart({ signals, field, label, color, unit, range = "24h", transform, height = 200, compact = false }: Props) {
   // Keep null values so Recharts shows gaps instead of drawing to 0
   const safeData = signals.map((s) => {
     const raw = s[field];
@@ -35,24 +37,24 @@ export function SignalChart({ signals, field, label, color, unit, range = "24h",
 
   if (safeData.length === 0) {
     return (
-      <div className="flex items-center justify-center h-40 text-zinc-500 text-sm">
+      <div className="flex items-center justify-center text-zinc-500 text-sm" style={{ height: compact ? 60 : 160 }}>
         No data available
       </div>
     );
   }
 
   return (
-    <ResponsiveContainer width="100%" height={200}>
-      <AreaChart data={safeData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={safeData} margin={compact ? { top: 4, right: 2, left: 2, bottom: 0 } : { top: 4, right: 4, left: -20, bottom: 0 }}>
         <defs>
           <linearGradient id={`grad-${field as string}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor={color} stopOpacity={0.3} />
             <stop offset="95%" stopColor={color} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-        <XAxis dataKey="time" tickFormatter={formatTick} tick={{ fontSize: 11, fill: "#71717a" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-        <YAxis tick={{ fontSize: 11, fill: "#71717a" }} tickLine={false} axisLine={false} />
+        {!compact && <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />}
+        <XAxis dataKey="time" tickFormatter={formatTick} tick={{ fontSize: 11, fill: "#71717a" }} tickLine={false} axisLine={false} interval="preserveStartEnd" hide={compact} />
+        <YAxis tick={{ fontSize: 11, fill: "#71717a" }} tickLine={false} axisLine={false} hide={compact} />
         <Tooltip
           contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, fontSize: 12 }}
           labelStyle={{ color: "#a1a1aa" }}

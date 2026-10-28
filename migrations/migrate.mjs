@@ -23,6 +23,7 @@ const files = [
   "007_create_devices.sql",
   "008_create_vehicle_cards.sql",
   "009_documents_vehicles_fk.sql",
+  "010_create_vehicle_contracts.sql",
 ];
 
 for (const file of files) {

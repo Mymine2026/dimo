@@ -8,6 +8,7 @@ import { Vehicle } from "@/types/dimo";
 import { Loader2, AlertCircle, Search, Truck, Wifi, Cpu, AlertTriangle, MapPin } from "lucide-react";
 import dynamic from "next/dynamic";
 import type { FleetPosition } from "@/components/FleetMap";
+import FleetControl from "@/components/FleetControl";
 const FleetMap = dynamic(
   () => import("@/components/FleetMap").then((m) => ({ default: m.FleetMap })),
   { ssr: false, loading: () => <div className="rounded-xl animate-pulse" style={{ background: "#1e1f23", height: 260 }} /> }
@@ -289,8 +290,30 @@ export default function VehiclesPage() {
       };
     });
 
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  const isManager = role === "super_admin" || role === "admin";
+
+  const mapBlock = fleetPositions.length > 0 ? (<div style={{ background: "#1e1f23", borderRadius: 16, padding: 16 }}>
+              <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
+                <div
+                  className="flex items-center justify-center"
+                  style={{ width: 24, height: 24, background: "#22c55e22", borderRadius: 6 }}
+                >
+                  <MapPin className="w-3.5 h-3.5" style={{ color: "#22c55e" }} />
+                </div>
+                <h3 className="text-sm font-semibold text-white">Posizioni Fleet</h3>
+                <span style={{ fontSize: 11, color: "#8e9192", marginLeft: "auto" }}>
+                  {fleetPositions.length} veicol{fleetPositions.length === 1 ? "o" : "i"}
+                </span>
+              </div>
+              <div style={{ borderRadius: 12, overflow: "hidden" }}>
+                <FleetMap positions={fleetPositions} height="260px" />
+              </div>
+            </div>
+  ) : null;
+
   return (
-    <div className="px-4 pt-6 pb-8" style={{ minHeight: "100vh" }}>
+    <div className="px-4 pt-6 pb-8" style={{ minHeight: "100vh", maxWidth: 1100, margin: "0 auto" }}>
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-5">
@@ -309,8 +332,12 @@ export default function VehiclesPage() {
       {/* ── Title ── */}
       <h1 className="font-bold text-white mb-4" style={{ fontSize: 28 }}>Flotta</h1>
 
+      {/* ── Quadro di controllo (solo per chi gestisce) ── */}
+      {isManager && <FleetControl mapSlot={mapBlock} />}
+      {isManager && <h2 className="font-semibold text-white mb-3" style={{ fontSize: 16 }}>Veicoli</h2>}
+
       {/* ── Stats pills ── */}
-      {!loading && !error && (
+      {!loading && !error && !isManager && (
         <div className="flex gap-2 mb-5">
           <StatPill label="Active"     value={activeCount}   color="#4ade80" />
           <StatPill label="In Service" value={serviceCount}  color="#60a5fa" />
@@ -355,7 +382,9 @@ export default function VehiclesPage() {
       {/* ── Vehicle list ── */}
       {!loading && !error && (
         <>
-          {filtered.map((v) => <VehicleCard key={v.tokenId} vehicle={v} alerts={latestMap.get(v.tokenId)} />)}
+          <div style={isManager ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", columnGap: 12 } : undefined}>
+            {filtered.map((v) => <VehicleCard key={v.tokenId} vehicle={v} alerts={latestMap.get(v.tokenId)} />)}
+          </div>
           {filtered.length === 0 && (
             <div
               className="flex flex-col items-center justify-center py-16 rounded-2xl"
@@ -371,26 +400,7 @@ export default function VehiclesPage() {
             </div>
           )}
 
-          {/* ── Posizioni Fleet ── */}
-          {fleetPositions.length > 0 && (
-            <div style={{ background: "#1e1f23", borderRadius: 16, padding: 16, marginTop: 16 }}>
-              <div className="flex items-center gap-2" style={{ marginBottom: 12 }}>
-                <div
-                  className="flex items-center justify-center"
-                  style={{ width: 24, height: 24, background: "#22c55e22", borderRadius: 6 }}
-                >
-                  <MapPin className="w-3.5 h-3.5" style={{ color: "#22c55e" }} />
-                </div>
-                <h3 className="text-sm font-semibold text-white">Posizioni Fleet</h3>
-                <span style={{ fontSize: 11, color: "#8e9192", marginLeft: "auto" }}>
-                  {fleetPositions.length} veicol{fleetPositions.length === 1 ? "o" : "i"}
-                </span>
-              </div>
-              <div style={{ borderRadius: 12, overflow: "hidden" }}>
-                <FleetMap positions={fleetPositions} height="260px" />
-              </div>
-            </div>
-          )}
+          {!isManager && mapBlock}
         </>
       )}
     </div>

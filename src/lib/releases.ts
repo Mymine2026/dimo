@@ -10,6 +10,18 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.11.0",
+    date: "28/10/2026",
+    title: "Contratto di noleggio e km, nuova grafica",
+    notes: [
+      "Pagina Flotta per chi gestisce: indicatori (veicoli con dati, contratti a rischio km, scadenze entro 60 giorni, sensori senza dati), contratti in ordine di rischio con barra dei km, elenco «Richiede attenzione» e mappa compatta",
+      "Pagina del veicolo: i grafici a tutta larghezza diventano riquadri piccoli e affiancati (valore attuale, minimo, media e massimo) che si ingrandiscono con un clic",
+      "Nella pagina del veicolo, per chi gestisce, c'è la scheda «Contratto di noleggio e km»: km inclusi, consegna, durata, km alla consegna, costo extra km e proroghe",
+      "Dal contachilometri del sensore l'app calcola i km usati dalla consegna, la quota di tempo trascorso, i km previsti alla scadenza, l'eventuale sforamento con il costo extra stimato e la data in cui si raggiungono i km inclusi",
+      "Il rischio (in regola, vicino al limite, oltre i km inclusi) tiene conto del ritmo degli ultimi giorni; senza dati sufficienti mostra cosa manca",
+    ],
+  },
+  {
     version: "1.10.4",
     date: "26/10/2026",
     title: "Lettura libretti più robusta",
