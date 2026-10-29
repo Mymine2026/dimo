@@ -132,12 +132,14 @@ export default function ContractCard({ tokenId }: { tokenId: string }) {
           {s && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8, marginTop: 12 }}>
               {[
-                ["Previsti alla scadenza", s.projected != null ? km(s.projected) : "—", "#fff"],
+                ["Previsti alla scadenza", s.projected != null ? km(s.projected) : s.projectionFrom ? `dal ${day(s.projectionFrom)}` : "—", "#fff"],
                 ["Oltre i km inclusi", s.overrun != null ? (s.overrun > 0 ? "+" + km(s.overrun) : "nessuno") : "—", s.overrun && s.overrun > 0 ? "#f87171" : "#fff"],
                 ["Costo extra stimato", s.overrunCost != null ? `${km(s.overrunCost)} €` : "—", "#fff"],
                 ["Limite raggiunto il", s.limitDate ? month(s.limitDate) : "—", "#fff"],
                 ["Scadenza", day(s.endDate), "#fff"],
-                ["Ritmo", s.ratePerDay != null ? `${km(s.ratePerDay * 30)} km/mese` : "—", "#fff"],
+                ["Consentiti dal contratto", s.allowedPerMonth != null ? `${km(s.allowedPerMonth)} km/mese` : "—", "#fff"],
+                ["Ritmo medio dalla consegna", s.ratePerDayAvg != null ? `${km(s.ratePerDayAvg * 30)} km/mese` : "—", s.allowedPerMonth != null && s.ratePerDayAvg != null && s.ratePerDayAvg * 30 > s.allowedPerMonth ? "#facc15" : "#fff"],
+                ["Ultimi giorni", s.ratePerDay != null ? `${km(s.ratePerDay * 30)} km/mese${s.recentVsAvgPct != null ? ` (${s.recentVsAvgPct > 0 ? "+" : ""}${Math.round(s.recentVsAvgPct)}%)` : ""}` : "—", "#fff"],
               ].map(([l, v, col]) => (
                 <div key={l} style={{ background: "#292a2e", borderRadius: 10, padding: "8px 10px" }}>
                   <p style={{ fontSize: 10, color: "#8e9192" }}>{l}</p>
@@ -147,12 +149,15 @@ export default function ContractCard({ tokenId }: { tokenId: string }) {
             </div>
           )}
 
+          {s && s.projectionFrom && (
+            <p style={{ fontSize: 12, color: "#8e9192", marginTop: 10 }}>La previsione dei km e il livello di rischio compaiono dopo i primi 6 mesi di utilizzo (dal {day(s.projectionFrom)}), per non dare avvisi su dati ancora instabili.</p>
+          )}
           {s && s.missing.length > 0 && (
             <p style={{ fontSize: 12, color: "#facc15", marginTop: 10 }}>Per il calcolo mancano: {s.missing.join(", ")}.</p>
           )}
           <p style={{ fontSize: 11, color: "#8e9192", marginTop: 10 }}>
             {[c.lessor, c.contract_number, odometer?.km != null ? `contachilometri del sensore ${km(odometer.km)} km (${day(odometer.at)})` : null,
-              s?.rateBasis === "recente" ? "ritmo degli ultimi giorni" : s?.rateBasis === "contratto" ? "ritmo medio dalla consegna" : null]
+              s?.projected != null ? "previsione = km usati ÷ tempo trascorso × durata del contratto" : null]
               .filter(Boolean).join(" · ")}
           </p>
         </>

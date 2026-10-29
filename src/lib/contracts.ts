@@ -1,4 +1,8 @@
 // Calcolo dell'avanzamento dei km di un contratto di noleggio e del rischio di superare i km inclusi.
+//
+// Previsione = km usati ÷ tempo trascorso × durata totale (media dalla consegna): sul lungo periodo assorbe i mesi
+// anomali. Si calcola solo dopo MIN_PROJECTION_DAYS giorni dalla consegna, prima la media è instabile e genererebbe
+// troppi avvisi. Il ritmo degli ultimi giorni è solo un'informazione: non cambia il colore del rischio.
 
 export interface ContractFields {
   km_total: number | null;
@@ -13,6 +17,10 @@ export interface ContractFields {
 
 export type Risk = "critico" | "attenzione" | "ok" | "nd";
 
+export const MIN_PROJECTION_DAYS = 180;   // 6 mesi di utilizzo
+const CRITICAL_ABOVE = 1.10;              // previsione oltre il 110% dei km inclusi
+const WARNING_ABOVE = 0.95;               // tra il 95% e il 110%
+
 export interface KmStatus {
   limit: number | null;          // km inclusi validi oggi (dopo proroga se c'è)
   endDate: string | null;
@@ -21,12 +29,16 @@ export interface KmStatus {
   usedPct: number | null;
   timePct: number | null;        // quota di durata già trascorsa
   daysLeft: number | null;
-  ratePerDay: number | null;     // km al giorno usati per la proiezione
-  rateBasis: "recente" | "contratto" | null;
-  projected: number | null;      // km totali previsti alla scadenza
+  elapsedDays: number | null;
+  ratePerDayAvg: number | null;  // media dalla consegna (km/giorno)
+  ratePerDay: number | null;     // ultimi giorni (km/giorno), solo informativo
+  recentVsAvgPct: number | null; // scostamento del ritmo recente dalla media
+  allowedPerMonth: number | null;// km al mese consentiti dal contratto
+  projected: number | null;      // km totali previsti alla scadenza (solo dopo 6 mesi)
   overrun: number | null;        // km oltre il limite previsti (0 se rientra)
   overrunCost: number | null;
-  limitDate: string | null;      // data in cui si raggiungono i km inclusi al ritmo attuale
+  limitDate: string | null;      // data in cui si raggiungono i km inclusi al ritmo medio
+  projectionFrom: string | null; // da quando la previsione è disponibile (se ancora troppo presto)
   risk: Risk;
   missing: string[];             // cosa manca per il calcolo
 }
@@ -68,35 +80,41 @@ export function computeKm(
   const totalDays = startDate && endDate ? Math.max(1, Math.round((toTime(endDate) - toTime(startDate)) / DAY)) : null;
   const timePct = elapsed != null && totalDays ? Math.min(100, (elapsed / totalDays) * 100) : null;
   const usedPct = used != null && limit ? (used / limit) * 100 : null;
+  const allowedPerMonth = limit && totalDays ? limit / (totalDays / 30.4375) : null;
 
-  // ritmo: se ci sono almeno 14 giorni di letture recenti si usa quello, altrimenti la media dalla consegna
-  let rate: number | null = null;
-  let basis: KmStatus["rateBasis"] = null;
+  // ritmo medio dalla consegna e ritmo degli ultimi giorni (solo informativo)
+  const rateAvg = used != null && elapsed && elapsed >= 30 ? used / elapsed : null;
+  let rateRecent: number | null = null;
   if (odoNow != null && odoPrev) {
     const span = Math.round((today - toTime(odoPrev.date.slice(0, 10))) / DAY);
-    if (span >= 14 && odoNow >= odoPrev.km) { rate = (odoNow - odoPrev.km) / span; basis = "recente"; }
+    if (span >= 14 && odoNow >= odoPrev.km) rateRecent = (odoNow - odoPrev.km) / span;
   }
-  if (rate == null && used != null && elapsed && elapsed >= 30) { rate = used / elapsed; basis = "contratto"; }
+  const recentVsAvgPct = rateRecent != null && rateAvg ? (rateRecent / rateAvg - 1) * 100 : null;
 
+  // previsione: solo dopo 6 mesi dalla consegna
+  const enough = elapsed != null && elapsed >= MIN_PROJECTION_DAYS;
+  const projectionFrom = !enough && startDate ? iso(toTime(startDate) + MIN_PROJECTION_DAYS * DAY) : null;
   let projected: number | null = null, overrun: number | null = null, overrunCost: number | null = null, limitDate: string | null = null;
-  if (used != null && rate != null && daysLeft != null) {
-    projected = used + rate * daysLeft;
+  if (enough && used != null && totalDays && elapsed) {
+    projected = (used / elapsed) * totalDays;
     if (limit) {
       overrun = Math.max(0, projected - limit);
       overrunCost = c.extra_km_cost ? overrun * c.extra_km_cost : null;
-      if (rate > 0 && used < limit) limitDate = iso(today + ((limit - used) / rate) * DAY);
+      if (rateAvg && rateAvg > 0 && used < limit) limitDate = iso(today + ((limit - used) / rateAvg) * DAY);
     }
   }
 
+  // rischio: già oltre i km inclusi vale sempre; altrimenti solo dopo i 6 mesi, sulla previsione
   let risk: Risk = "nd";
   if (limit && used != null) {
-    if (used > limit || (projected != null && projected > limit * 1.1)) risk = "critico";
-    else if (projected != null && projected > limit * 0.95) risk = "attenzione";
-    else if (projected == null && timePct != null && usedPct != null && usedPct > timePct + 10) risk = "attenzione";
-    else risk = projected != null || timePct != null ? "ok" : "nd";
+    if (used > limit) risk = "critico";
+    else if (projected != null) risk = projected > limit * CRITICAL_ABOVE ? "critico" : projected > limit * WARNING_ABOVE ? "attenzione" : "ok";
   }
 
-  return { limit, endDate, startDate, used, usedPct, timePct, daysLeft, ratePerDay: rate, rateBasis: basis, projected, overrun, overrunCost, limitDate, risk, missing };
+  return {
+    limit, endDate, startDate, used, usedPct, timePct, daysLeft, elapsedDays: elapsed, ratePerDayAvg: rateAvg, ratePerDay: rateRecent,
+    recentVsAvgPct, allowedPerMonth, projected, overrun, overrunCost, limitDate, projectionFrom, risk, missing,
+  };
 }
 
 const ORDER: Record<Risk, number> = { critico: 0, attenzione: 1, ok: 2, nd: 3 };

@@ -10,6 +10,17 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.11.1",
+    date: "29/10/2026",
+    title: "Previsione dei km più stabile",
+    notes: [
+      "La previsione dei km alla scadenza usa la media dalla consegna (km usati ÷ tempo trascorso × durata), che assorbe i mesi anomali; il ritmo degli ultimi giorni resta come informazione e non cambia il livello di rischio",
+      "Previsione e rischio compaiono dopo i primi 6 mesi di utilizzo, per non dare avvisi su dati ancora instabili; un veicolo già oltre i km inclusi viene segnalato subito",
+      "Soglie: oltre il 110% dei km inclusi «oltre i km», tra il 95% e il 110% «vicino al limite»; nella scheda compaiono anche i km al mese consentiti dal contratto",
+      "Lettura del libretto: la classe ambientale non viene più confusa con il riferimento a un regolamento e una massa in servizio incoerente viene lasciata vuota",
+    ],
+  },
+  {
     version: "1.11.0",
     date: "28/10/2026",
     title: "Contratto di noleggio e km, nuova grafica",

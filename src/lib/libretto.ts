@@ -127,8 +127,12 @@ export function normalizeFields(raw: Record<string, unknown>): LibrettoFields {
   f.seats = digits(raw.seats, 1, 99);
   f.mass_max_kg = digits(raw.mass_max_kg, 100, 60000);
   f.mass_service_kg = digits(raw.mass_service_kg, 100, 60000);
-  const euro = text(raw.euro_class, 30).match(/(\d+[A-Z]?)/);
-  f.euro_class = euro ? `Euro ${euro[1]}` : "";
+  // «Euro 6», «6D», «EURO 6D-TEMP»; si ignora il riferimento a un regolamento (es. «REG UE 2018/1832»)
+  const euroRaw = text(raw.euro_class, 30);
+  const euro = euroRaw.match(/EURO\s*(\d+[A-Z]?)/i) ?? euroRaw.match(/^\s*(\d[A-Z]?)\s*$/);
+  f.euro_class = euro ? `Euro ${euro[1].toUpperCase()}` : "";
+  // massa in servizio superiore alla massa massima: lettura sbagliata, si lascia vuota
+  if (f.mass_service_kg && f.mass_max_kg && Number(f.mass_service_kg) > Number(f.mass_max_kg)) f.mass_service_kg = "";
   f.first_registration = parseDate(raw.first_registration);
   f.last_inspection = parseDate(raw.last_inspection);
   f.owner_name = text(raw.owner_name, 200);
